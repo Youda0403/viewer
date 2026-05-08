@@ -1,78 +1,34 @@
 /**
- * Roll20 CSS 매크로 테스터
+ * Roll20 채팅 미리보기.
  *
- * Roll20 채팅창에 매크로를 보내지 않고 미리 결과를 확인할 수 있는 정적 사이트.
- * Roll20의 화이트리스트 기반 sanitizer를 흉내내어 차단되는 태그/속성을 표시한다.
+ * 입력 형식: [내용](#" style="prop: value; …)  형태의 Roll20 마크다운 트릭.
+ * Roll20 채팅 sanitizer 가 막는 calc() 등을 똑같이 막고,
+ * 특수문자(`)`, `]`, `"` 등) 이스케이프 누락을 안내한다.
+ *
+ * 출처: danharu0920 블로그(롤꾸용 CSS 입문),
+ *       베베까까 블로그(Roll20 채팅로그 꾸미기 / 롤꾸하는데 도움되는 CSS 모음).
  */
-
 'use strict';
 
-// ==========================================================
-// 1. 화이트리스트 정의
-// ==========================================================
+// ============================================================
+// 1. 화이트리스트 / 차단 패턴
+// ============================================================
 
-// Roll20 채팅에서 허용되는 HTML 태그 (Roll20 Wiki + 커뮤니티 정리 기반).
-const ALLOWED_TAGS = new Set([
-  'a', 'b', 'big', 'blockquote', 'br', 'caption', 'cite', 'code',
-  'dd', 'del', 'dfn', 'div', 'dl', 'dt', 'em',
-  'figcaption', 'figure',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
-  'i', 'img', 'ins', 'kbd', 'label', 'li', 'mark', 'ol',
-  'p', 'pre', 'q', 's', 'samp', 'small', 'span', 'strike',
-  'strong', 'sub', 'sup',
-  'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr',
-  'u', 'ul', 'var',
-]);
-
-// 보안상 자식까지 모조리 들어내는 태그.
-const DROP_TAGS = new Set([
-  'script', 'style', 'iframe', 'frame', 'frameset', 'object', 'embed',
-  'form', 'input', 'button', 'textarea', 'select', 'option', 'optgroup',
-  'meta', 'link', 'base', 'audio', 'video', 'source', 'track',
-  'svg', 'canvas', 'noscript', 'applet', 'param', 'fieldset', 'legend',
-  'datalist', 'output', 'progress', 'meter', 'details', 'summary',
-  'dialog', 'menu', 'template', 'slot',
-]);
-
-// 태그별로 살려둘 속성. style/class/title은 모든 태그 공통.
-const COMMON_ATTRS = new Set(['class', 'title', 'lang', 'dir', 'id', 'style']);
-const TAG_SPECIFIC_ATTRS = {
-  a:     ['href', 'target', 'rel', 'name'],
-  img:   ['src', 'alt', 'width', 'height'],
-  td:    ['colspan', 'rowspan', 'align', 'valign', 'width', 'height'],
-  th:    ['colspan', 'rowspan', 'align', 'valign', 'width', 'height', 'scope'],
-  table: ['border', 'cellspacing', 'cellpadding', 'align', 'width', 'summary'],
-  tr:    ['align', 'valign'],
-  thead: ['align', 'valign'],
-  tbody: ['align', 'valign'],
-  tfoot: ['align', 'valign'],
-  col:   ['align', 'valign', 'span', 'width'],
-  ol:    ['start', 'type', 'reversed'],
-  ul:    ['type'],
-  li:    ['value'],
-  blockquote: ['cite'],
-  q:     ['cite'],
-  del:   ['cite', 'datetime'],
-  ins:   ['cite', 'datetime'],
-  label: ['for'],
-};
-
-// Roll20 채팅에서 동작이 검증된 CSS 속성들.
-const ALLOWED_CSS_PROPS = new Set([
+// 베베까까 블로그에서 동작 확인된 속성 + 같은 카테고리의 변형까지.
+const ALLOWED_PROPS = new Set([
   // color & background
   'color', 'background', 'background-color', 'background-image',
-  'background-position', 'background-repeat', 'background-size',
+  'background-size', 'background-position', 'background-repeat',
   'background-attachment', 'background-origin', 'background-clip',
-  // font
-  'font', 'font-family', 'font-size', 'font-style', 'font-weight',
+  // font / text
+  'font', 'font-family', 'font-size', 'font-weight', 'font-style',
   'font-variant', 'font-stretch',
-  // text
-  'text-align', 'text-decoration', 'text-decoration-color',
-  'text-decoration-line', 'text-decoration-style',
-  'text-indent', 'text-shadow', 'text-transform',
-  'line-height', 'letter-spacing', 'word-spacing',
-  'white-space', 'word-break', 'word-wrap', 'overflow-wrap',
-  'direction', 'unicode-bidi',
+  'text-decoration', 'text-decoration-line', 'text-decoration-color',
+  'text-decoration-style', 'text-decoration-thickness',
+  'text-shadow', 'text-align', 'text-indent', 'text-transform',
+  'letter-spacing', 'word-spacing', 'line-height',
+  'word-break', 'word-wrap', 'overflow-wrap', 'white-space',
+  'direction',
   // box
   'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
   'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
@@ -85,189 +41,93 @@ const ALLOWED_CSS_PROPS = new Set([
   'border-bottom-width', 'border-left-width',
   'border-radius', 'border-top-left-radius', 'border-top-right-radius',
   'border-bottom-left-radius', 'border-bottom-right-radius',
-  'border-image', 'border-image-source', 'border-image-slice',
-  'border-image-width', 'border-image-outset', 'border-image-repeat',
-  'border-collapse', 'border-spacing', 'empty-cells', 'caption-side',
+  'border-collapse', 'border-spacing',
   'box-shadow', 'box-sizing',
-  // size
+  // size / layout
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-  // layout
-  'display', 'visibility', 'overflow', 'overflow-x', 'overflow-y',
-  'vertical-align', 'float', 'clear', 'opacity',
+  'display', 'vertical-align', 'visibility', 'opacity',
+  'float', 'clear', 'overflow', 'overflow-x', 'overflow-y',
   // list
   'list-style', 'list-style-type', 'list-style-position', 'list-style-image',
 ]);
 
-// 명시적으로 채팅에서 동작 안 한다고 알려진 속성들 (warn 시 더 강조).
-const KNOWN_BLOCKED_PROPS = new Set([
-  'position', 'top', 'right', 'bottom', 'left', 'z-index',
-  'flex', 'flex-direction', 'flex-wrap', 'flex-flow', 'flex-grow',
-  'flex-shrink', 'flex-basis',
-  'align-items', 'align-content', 'align-self',
-  'justify-items', 'justify-content', 'justify-self',
-  'place-items', 'place-content', 'place-self',
-  'order', 'gap', 'row-gap', 'column-gap',
-  'grid', 'grid-template', 'grid-template-rows', 'grid-template-columns',
-  'grid-template-areas', 'grid-area', 'grid-row', 'grid-column',
-  'grid-row-start', 'grid-row-end', 'grid-column-start', 'grid-column-end',
-  'grid-auto-rows', 'grid-auto-columns', 'grid-auto-flow', 'grid-gap',
-  'transform', 'transform-origin', 'transform-style',
-  'perspective', 'perspective-origin', 'backface-visibility',
-  'animation', 'animation-name', 'animation-duration', 'animation-delay',
-  'animation-direction', 'animation-fill-mode', 'animation-iteration-count',
-  'animation-play-state', 'animation-timing-function',
-  'transition', 'transition-property', 'transition-duration',
-  'transition-delay', 'transition-timing-function',
-  'will-change', 'pointer-events', 'cursor', 'user-select',
-  'filter', 'backdrop-filter', 'mix-blend-mode', 'isolation',
-  'clip', 'clip-path', 'mask', 'mask-image',
-  'content', 'counter-reset', 'counter-increment',
-  'columns', 'column-count', 'column-width', 'column-gap', 'column-rule',
-  'resize', 'object-fit', 'object-position',
-  'tab-size', 'scroll-behavior', 'scroll-snap-type',
-]);
+// Roll20에서 명시적으로 막은 / 보안상 막아야 하는 패턴.
+const BLOCKED_PATTERNS = {
+  calc:       { re: /\bcalc\s*\(/i,
+                msg: 'Roll20는 calc() 수식을 막아놨어요. 고정값으로 바꿔주세요.' },
+  expression: { re: /\bexpression\s*\(/i,
+                msg: 'CSS expression() 은 차단됩니다.' },
+  jsurl:      { re: /url\s*\(\s*['"]?\s*javascript:/i,
+                msg: 'url(javascript:…) 는 차단됩니다.' },
+};
 
-// display 속성은 일부 값만 통과시킨다.
-const ALLOWED_DISPLAY_VALUES = new Set([
-  'inline', 'block', 'inline-block', 'list-item', 'none',
-  'table', 'table-row', 'table-cell', 'table-caption',
-  'table-row-group', 'table-header-group', 'table-footer-group',
-  'table-column', 'table-column-group',
-]);
+// 명령어 prefix.
+const COMMANDS = [
+  { name: 'desc', re: /^\/desc\s+/i },
+  { name: 'em',   re: /^\/em\s+/i },
+  { name: 'em',   re: /^\/me\s+/i },
+  { name: 'say',  re: /^\/say\s+/i },
+];
 
-// ==========================================================
-// 2. Sanitizer 본체
-// ==========================================================
+// 베베까까 블로그의 escape 표.
+const ESCAPE_TABLE = [
+  ['space (빈칸 여러개)', '&nbsp;'],
+  ['%',  '&#37;'],
+  ['}',  '&#125;'],
+  [')',  '&#41;'],
+  ['?',  '&#63;'],
+  ['@',  '&#64;'],
+  ['[',  '&#91;'],
+  [']',  '&#93;'],
+  ['|',  '&#124;'],
+  ['"',  '&quot;'],
+];
+
+// ============================================================
+// 2. 유틸
+// ============================================================
+
+const $ = (sel) => document.querySelector(sel);
+
+const _entityHelper = document.createElement('textarea');
+function decodeEntities(s) {
+  _entityHelper.innerHTML = String(s);
+  return _entityHelper.value;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+const debounce = (fn, ms) => {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+};
+
+// ============================================================
+// 3. SanitizeReport
+// ============================================================
 
 class SanitizeReport {
-  constructor() {
-    this.entries = [];
-    this.counts = { tag: 0, prop: 0, value: 0, attr: 0, vendor: 0, security: 0 };
-  }
-  add(kind, name, reason, detail) {
-    this.entries.push({ kind, name, reason, detail });
+  constructor() { this.entries = []; this.counts = {}; }
+  add(kind, name, reason) {
+    this.entries.push({ kind, name, reason });
     this.counts[kind] = (this.counts[kind] || 0) + 1;
   }
   total() { return this.entries.length; }
 }
+const KIND_LABEL = {
+  prop: '속성', value: '값', syntax: '문법',
+  escape: '이스케이프', security: '보안',
+};
 
-function sanitize(html) {
-  const report = new SanitizeReport();
-  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
-  const root = doc.body.firstElementChild;
-  walk(root, report);
-  return { html: root.innerHTML, report };
-}
+// ============================================================
+// 4. CSS 파서
+// ============================================================
 
-function walk(node, report) {
-  // 살아있는 children 배열을 그대로 돌면 unwrap/remove 시 인덱스가 어긋난다.
-  const children = Array.from(node.children);
-  for (const child of children) walk(child, report);
-
-  // root는 자기 자신을 검사하지 않는다 (루트 div는 우리가 감싼 것이므로).
-  if (node.parentElement === null) return;
-
-  const tag = node.tagName.toLowerCase();
-
-  if (DROP_TAGS.has(tag)) {
-    report.add(
-      tag === 'script' || tag === 'iframe' || tag === 'object' || tag === 'embed' ? 'security' : 'tag',
-      `<${tag}>`,
-      `<${tag}> 태그는 Roll20 채팅에서 차단됩니다 (자식 콘텐츠도 함께 제거).`,
-    );
-    node.remove();
-    return;
-  }
-
-  if (!ALLOWED_TAGS.has(tag)) {
-    report.add('tag', `<${tag}>`, `<${tag}> 는 Roll20 채팅 화이트리스트에 없어요. 텍스트 내용만 남기고 태그는 풀립니다.`);
-    unwrap(node);
-    return;
-  }
-
-  // 속성 정리
-  cleanAttributes(node, report);
-}
-
-function cleanAttributes(el, report) {
-  const tag = el.tagName.toLowerCase();
-  const tagAttrs = new Set(TAG_SPECIFIC_ATTRS[tag] || []);
-  const attrs = Array.from(el.attributes);
-
-  for (const attr of attrs) {
-    const name = attr.name.toLowerCase();
-
-    // on* 핸들러는 보안상 즉시 제거.
-    if (name.startsWith('on')) {
-      report.add('security', name, `이벤트 핸들러 속성 ${name} 은 차단됩니다.`);
-      el.removeAttribute(attr.name);
-      continue;
-    }
-
-    // a 태그의 href javascript: 차단
-    if (tag === 'a' && name === 'href') {
-      const v = attr.value.trim().toLowerCase();
-      if (v.startsWith('javascript:') || v.startsWith('data:text/html')) {
-        report.add('security', `href="${attr.value}"`, 'javascript: / data:text/html 링크는 차단됩니다.');
-        el.removeAttribute(attr.name);
-        continue;
-      }
-    }
-
-    // img src
-    if (tag === 'img' && name === 'src') {
-      const v = attr.value.trim().toLowerCase();
-      if (v.startsWith('javascript:')) {
-        report.add('security', `src="${attr.value}"`, 'javascript: 이미지 src는 차단됩니다.');
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      // 참고: 실제 Roll20는 imgsrv.roll20.net 호스팅 이미지만 허용
-      if (!/^(https?:|imgsrv\.roll20\.net|\/)/.test(v) && !v.startsWith('data:image')) {
-        // 동작은 시키되 경고만 남긴다.
-      } else if (!v.includes('imgsrv.roll20.net') && v.startsWith('http')) {
-        report.add('attr', `<img src="…">`, `Roll20는 imgsrv.roll20.net 호스팅 이미지만 표시해요. 외부 호스팅 이미지는 채팅에서 안 보일 수 있습니다.`, attr.value);
-      }
-    }
-
-    // style 처리
-    if (name === 'style') {
-      const cleaned = sanitizeStyle(attr.value, report);
-      if (cleaned) {
-        el.setAttribute('style', cleaned);
-      } else {
-        el.removeAttribute('style');
-      }
-      continue;
-    }
-
-    // 일반 속성 화이트리스트
-    if (!COMMON_ATTRS.has(name) && !tagAttrs.has(name) && !name.startsWith('data-')) {
-      report.add('attr', `${tag}[${name}]`, `<${tag}> 의 ${name} 속성은 허용 목록에 없어 제거되었어요.`);
-      el.removeAttribute(attr.name);
-    }
-  }
-}
-
-function unwrap(el) {
-  const parent = el.parentNode;
-  while (el.firstChild) parent.insertBefore(el.firstChild, el);
-  parent.removeChild(el);
-}
-
-// ----------------------------------------------------------
-// CSS 파싱
-// ----------------------------------------------------------
-
-/**
- * style="..." 값을 파싱해서 [{prop, value}] 로 만든다.
- * url(...) 안에 세미콜론이 들어갈 수 있으므로 단순 split이 아닌 상태 머신을 쓴다.
- */
-function parseStyleAttr(text) {
+function parseDecls(text) {
   const out = [];
-  let buf = '';
-  let depth = 0;
-  let inStr = null;
+  let buf = '', depth = 0, inStr = null;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (inStr) {
@@ -278,9 +138,7 @@ function parseStyleAttr(text) {
     if (ch === '"' || ch === "'") { inStr = ch; buf += ch; continue; }
     if (ch === '(') { depth++; buf += ch; continue; }
     if (ch === ')') { depth = Math.max(0, depth - 1); buf += ch; continue; }
-    if (ch === ';' && depth === 0) {
-      pushDecl(out, buf); buf = ''; continue;
-    }
+    if (ch === ';' && depth === 0) { pushDecl(out, buf); buf = ''; continue; }
     buf += ch;
   }
   if (buf.trim()) pushDecl(out, buf);
@@ -288,142 +146,202 @@ function parseStyleAttr(text) {
 }
 
 function pushDecl(arr, raw) {
-  const idx = raw.indexOf(':');
-  if (idx === -1) return;
-  const prop = raw.slice(0, idx).trim().toLowerCase();
-  const value = raw.slice(idx + 1).trim();
-  if (!prop || !value) return;
-  arr.push({ prop, value });
-}
-
-function sanitizeStyle(text, report) {
-  const decls = parseStyleAttr(text);
-  const survived = [];
-  for (const { prop, value } of decls) {
-    // !important 는 그대로 통과시켜준다 (Roll20도 받음).
-    const cleanValue = value;
-
-    // 벤더 프리픽스
-    if (prop.startsWith('-webkit-') || prop.startsWith('-moz-') ||
-        prop.startsWith('-ms-') || prop.startsWith('-o-')) {
-      report.add('vendor', prop, '벤더 프리픽스가 붙은 속성은 Roll20에서 제거됩니다.', `${prop}: ${value}`);
-      continue;
-    }
-
-    // 명시적 차단 목록 우선 처리
-    if (KNOWN_BLOCKED_PROPS.has(prop)) {
-      report.add('prop', prop,
-        `${prop} 속성은 Roll20 채팅의 sanitizer 화이트리스트에 없어 제거됩니다.`,
-        `${prop}: ${value}`);
-      continue;
-    }
-
-    if (!ALLOWED_CSS_PROPS.has(prop)) {
-      report.add('prop', prop,
-        `${prop} 속성은 Roll20 채팅에서 알려진 허용 속성이 아니에요. 채팅창에서는 잘릴 가능성이 높아요.`,
-        `${prop}: ${value}`);
-      continue;
-    }
-
-    // display 값 검사
-    if (prop === 'display') {
-      const v = value.toLowerCase().replace(/\s*!important\s*$/, '').trim();
-      if (!ALLOWED_DISPLAY_VALUES.has(v)) {
-        report.add('value', `display: ${v}`,
-          `display 속성에서 ${v} 값은 Roll20 채팅에서 차단돼요. (block, inline, inline-block, none, table 계열만 통과)`,
-          `${prop}: ${value}`);
-        continue;
-      }
-    }
-
-    // url() 안에 javascript: 체크
-    if (/url\(\s*['"]?\s*javascript:/i.test(cleanValue)) {
-      report.add('security', `${prop}: url(javascript:)`, 'CSS url() 안의 javascript: URL은 차단됩니다.');
-      continue;
-    }
-
-    // expression() 차단 (구 IE)
-    if (/expression\s*\(/i.test(cleanValue)) {
-      report.add('security', `${prop}: expression(...)`, 'CSS expression() 은 차단됩니다.');
-      continue;
-    }
-
-    survived.push(`${prop}: ${cleanValue}`);
+  const trimmed = raw.trim();
+  if (!trimmed) return;
+  const idx = trimmed.indexOf(':');
+  if (idx === -1) {
+    arr.push({ raw: trimmed, invalid: true });
+    return;
   }
-  return survived.join('; ');
+  const prop = trimmed.slice(0, idx).trim().toLowerCase();
+  const value = trimmed.slice(idx + 1).trim();
+  if (!prop || !value) {
+    arr.push({ raw: trimmed, invalid: true });
+    return;
+  }
+  arr.push({ prop, value, raw: trimmed });
 }
 
-// ==========================================================
-// 3. 채팅 렌더링
-// ==========================================================
+function validateDecl(decl, report) {
+  if (decl.invalid) {
+    report.add('syntax', decl.raw,
+      '"속성: 값" 형식이 아니에요. 콜론(:) 누락이거나 세미콜론(;) 위치가 잘못됐을 수 있어요.');
+    return null;
+  }
+  const { prop, value } = decl;
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
+  // 괄호 짝이 안 맞으면 이스케이프 누락 (e.g. rgb(0,0,0) 의 ) 가 마크다운 닫힘으로 잡힌 경우).
+  const opens = (value.match(/\(/g) || []).length;
+  const closes = (value.match(/\)/g) || []).length;
+  if (opens !== closes) {
+    report.add('escape', `${prop}: ${value}`,
+      `괄호 짝이 안 맞아요. 값 안의 ) 는 &#41; 로, ( 는 &#40; 로 이스케이프해주세요.`);
+    return null;
+  }
+
+  for (const [key, { re, msg }] of Object.entries(BLOCKED_PATTERNS)) {
+    if (re.test(value)) {
+      report.add(key === 'calc' ? 'value' : 'security', `${prop}: ${value}`, msg);
+      return null;
+    }
+  }
+
+  if (!ALLOWED_PROPS.has(prop)) {
+    if (/^-(webkit|moz|ms|o)-/.test(prop)) {
+      report.add('prop', prop,
+        '벤더 프리픽스는 Roll20 채팅에서 동작이 보장되지 않아요.');
+    } else {
+      report.add('prop', prop,
+        `${prop} 은 두 블로그가 검증한 속성 목록에 없어요. Roll20에서 안 먹힐 수 있습니다.`);
+    }
+    // 화이트리스트에 없어도 미리보기에선 보이게는 둠.
+    return decl;
+  }
+  return decl;
+}
+
+// ============================================================
+// 5. Roll20 마크다운 파서
+// ============================================================
+
+// [text](#"style="DECLS)  /  [text](#" style="DECLS)
+const STYLE_LINK_RE =
+  /\[([^\]]*)\]\(\s*#\s*"\s*style\s*=\s*"([^)]*)\)/g;
+
+// 일반 마크다운 링크
+const NORMAL_LINK_RE =
+  /\[([^\]]*)\]\(((?:https?:\/\/|mailto:|#)[^)\s]*)\)/g;
+
+function detectCommand(line) {
+  for (const c of COMMANDS) {
+    if (c.re.test(line)) return { name: c.name, rest: line.replace(c.re, '') };
+  }
+  return { name: 'say', rest: line };
+}
+
+function processInline(line, report) {
+  // 1) Roll20 style 링크를 placeholder로 치환
+  const placeholders = [];
+  let work = line.replace(STYLE_LINK_RE, (_, text, decls) => {
+    const i = placeholders.length;
+    placeholders.push({ kind: 'styled', text, decls });
+    return ` R20_${i} `;
+  });
+
+  // 2) 일반 링크
+  work = work.replace(NORMAL_LINK_RE, (_, text, url) => {
+    if (/^javascript:/i.test(url)) {
+      report.add('security', `[${text}](${url})`,
+        'javascript: 링크는 차단됩니다.');
+      return text;
+    }
+    const i = placeholders.length;
+    placeholders.push({ kind: 'normal', text, url });
+    return ` R20_${i} `;
+  });
+
+  // 3) 처리 안 된 [text](#... 패턴 = 특수문자 escape 깨졌을 가능성
+  const stray = work.match(/\[[^\] ]*\]\([^ ]*#/);
+  if (stray) {
+    report.add('escape', stray[0],
+      '매크로 패턴이 끝까지 닫히지 않은 것 같아요. 값 안의 ) ] " ? @ % 등은 ' +
+      '&#41; &#93; &quot; &#63; &#64; &#37; 처럼 escape 해줘야 해요.');
+  }
+
+  // 4) HTML escape 후 마크다운 처리
+  let html = escapeHtml(work);
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  html = html.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+  html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+
+  // 5) placeholder 복원
+  html = html.replace(/ R20_(\d+) /g, (_m, idx) => {
+    const p = placeholders[+idx];
+    if (p.kind === 'styled') return renderStyledLink(p, report);
+    return `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(decodeEntities(p.text))}</a>`;
+  });
+
+  return html;
+}
+
+function renderStyledLink(p, report) {
+  const decoded = decodeEntities(p.decls);
+  const decls = parseDecls(decoded);
+  const survived = [];
+  for (const d of decls) {
+    const ok = validateDecl(d, report);
+    if (ok) survived.push(`${ok.prop}: ${ok.value}`);
+  }
+  const text = decodeEntities(p.text);
+  const styleStr = survived.join('; ');
+  // text 안의 마크다운(**굵게** 등)은 기본 채팅 단계에서 이미 처리됨.
+  // 여기 text는 placeholder에서 뺀 원본이라 다시 escape만.
+  return `<a class="r20-styled" href="#" onclick="return false" style="${escapeHtml(styleStr)}">${escapeHtml(text)}</a>`;
+}
+
+// ============================================================
+// 6. 메시지 처리
+// ============================================================
+
+function processMessage(line, report) {
+  if (!line.trim()) return null;
+  const { name, rest } = detectCommand(line);
+  const html = processInline(rest, report);
+  return { type: name, html };
+}
+
+function processInput(text) {
+  const report = new SanitizeReport();
+  const messages = [];
+  for (const line of text.split('\n')) {
+    const m = processMessage(line, report);
+    if (m) messages.push(m);
+  }
+  return { messages, report };
+}
+
+// ============================================================
+// 7. 렌더링
+// ============================================================
 
 const state = {
-  messages: [],     // 전송된(고정) 메시지들
-  preview: null,    // 입력 중인 미리보기
+  sent: [],         // 전송된 메시지들
+  preview: [],      // 입력 중인 미리보기 메시지들
 };
 
-function escapeText(s) {
-  return s.replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]));
-}
-
-function buildMessage({ type, name, asName, target, html, isPreview }) {
-  const wrap = document.createElement('div');
-  wrap.className = `chat-msg ${type}`;
-  if (isPreview) wrap.classList.add('preview');
-
+function buildMsgEl({ type, html, isPreview }) {
+  const el = document.createElement('div');
+  el.className = `chat-msg ${type}`;
   if (isPreview) {
+    el.classList.add('preview');
     const tag = document.createElement('span');
     tag.className = 'preview-tag';
     tag.textContent = '미리보기';
-    wrap.appendChild(tag);
+    el.appendChild(tag);
   }
-
-  if (type === 'whisper') {
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    meta.textContent = `(귓속말 → ${target || 'GM'})`;
-    wrap.appendChild(meta);
-  }
-
-  const displayName =
-    type === 'as' ? (asName || 'NPC') :
-    type === 'desc' ? '' :
-    name || '이름없음';
-
-  if (displayName) {
-    const by = document.createElement('span');
-    by.className = 'by';
-    by.textContent = displayName;
-    wrap.appendChild(by);
-    wrap.appendChild(document.createTextNode(' '));
-  }
-
   const body = document.createElement('span');
   body.className = 'body';
-  body.innerHTML = html;       // 이미 sanitize 된 HTML
-  wrap.appendChild(body);
-
-  return wrap;
+  body.innerHTML = html;
+  el.appendChild(body);
+  return el;
 }
 
 function renderChat() {
   const win = $('#chat-window');
   win.innerHTML = '';
-  const items = state.messages.slice();
-  if (state.preview) items.push(state.preview);
-  if (items.length === 0) {
+  const all = [
+    ...state.sent,
+    ...state.preview.map((m) => ({ ...m, isPreview: true })),
+  ];
+  if (all.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
-    empty.textContent = '아직 메시지가 없어요. 왼쪽에 매크로를 입력하면 여기에 미리보기가 나타나요.';
+    empty.textContent = '왼쪽에 매크로를 입력하면 여기에 미리보기가 떠요.';
     win.appendChild(empty);
     return;
   }
-  for (const m of items) win.appendChild(buildMessage(m));
+  for (const m of all) win.appendChild(buildMsgEl(m));
   win.scrollTop = win.scrollHeight;
 }
 
@@ -432,219 +350,135 @@ function renderWarnings(report) {
   body.innerHTML = '';
   const total = report.total();
   $('#warn-badge').textContent = String(total);
-  $('#warn-badge').dataset.level = total === 0 ? 'ok' : (report.counts.security > 0 ? 'danger' : 'warn');
+  $('#warn-badge').dataset.level =
+    total === 0 ? 'ok' : (report.counts.security ? 'danger' : 'warn');
 
   if (total === 0) {
-    body.innerHTML = '<p class="empty">전부 통과! Roll20 채팅에서도 똑같이 보일 거예요.</p>';
+    body.innerHTML = '<p class="empty">전부 통과! Roll20에서도 똑같이 보일 거예요.</p>';
     return;
   }
 
   const summary = document.createElement('div');
   summary.className = 'warn-summary';
+  const order = ['security', 'syntax', 'escape', 'prop', 'value'];
   const parts = [];
-  if (report.counts.security) parts.push(`<strong>보안 ${report.counts.security}</strong>`);
-  if (report.counts.tag)      parts.push(`<strong>태그 ${report.counts.tag}</strong>`);
-  if (report.counts.prop)     parts.push(`<strong>속성 ${report.counts.prop}</strong>`);
-  if (report.counts.value)    parts.push(`<strong>값 ${report.counts.value}</strong>`);
-  if (report.counts.attr)     parts.push(`<strong>attr ${report.counts.attr}</strong>`);
-  if (report.counts.vendor)   parts.push(`<strong>vendor ${report.counts.vendor}</strong>`);
-  summary.innerHTML = `차단된 항목 총 ${total}개 — ${parts.join(' · ')}`;
+  for (const k of order) {
+    if (report.counts[k]) parts.push(`<strong>${KIND_LABEL[k]} ${report.counts[k]}</strong>`);
+  }
+  summary.innerHTML = `차단/경고 ${total}건 — ${parts.join(' · ')}`;
   body.appendChild(summary);
 
-  // 같은 항목 여러 번 잡히면 묶어서 보여준다.
   const grouped = new Map();
   for (const e of report.entries) {
-    const key = `${e.kind}::${e.name}`;
-    if (!grouped.has(key)) grouped.set(key, { ...e, count: 0 });
-    grouped.get(key).count++;
+    const k = `${e.kind}::${e.name}::${e.reason}`;
+    if (!grouped.has(k)) grouped.set(k, { ...e, count: 0 });
+    grouped.get(k).count++;
   }
-
   for (const e of grouped.values()) {
-    const el = document.createElement('div');
-    el.className = 'warn-item';
-    const kindLabelMap = {
-      tag: '태그', prop: 'CSS', value: '값', attr: '속성',
-      vendor: '벤더', security: '보안',
-    };
-    el.innerHTML =
-      `<span class="label" data-kind="${e.kind}">${kindLabelMap[e.kind] || e.kind}</span>` +
-      `<code>${escapeText(e.name)}</code>` +
-      (e.count > 1 ? ` <span class="small muted">×${e.count}</span>` : '') +
-      (e.reason ? `<span class="reason">${escapeText(e.reason)}</span>` : '');
-    body.appendChild(el);
+    const item = document.createElement('div');
+    item.className = 'warn-item';
+    item.innerHTML =
+      `<span class="label" data-kind="${e.kind}">${KIND_LABEL[e.kind] || e.kind}</span>` +
+      `<code>${escapeHtml(e.name)}</code>` +
+      (e.count > 1 ? ` <span class="muted small">×${e.count}</span>` : '') +
+      `<span class="reason">${escapeHtml(e.reason)}</span>`;
+    body.appendChild(item);
   }
 }
 
-// ==========================================================
-// 4. 입력 처리
-// ==========================================================
-
-const debounce = (fn, ms) => {
-  let t = null;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
-};
-
-function gatherInput() {
-  return {
-    type:    $('#message-type').value,
-    name:    $('#character-name').value.trim() || '이름없음',
-    asName:  $('#as-name').value.trim(),
-    target:  $('#whisper-target').value.trim(),
-    raw:     $('#macro-input').value,
-  };
+function renderCheatsheet() {
+  const body = $('#cheatsheet-body');
+  body.innerHTML =
+    '<h3>되는 속성 (블로그 검증)</h3>' +
+    '<p class="mono small">' +
+      Array.from(ALLOWED_PROPS).sort().join(', ') +
+    '</p>' +
+    '<h3>막혀있거나 의심스러운 것</h3>' +
+    '<ul>' +
+      '<li><code>calc(…)</code> — Roll20에서 명시적으로 막아놓음</li>' +
+      '<li><code>url(javascript:…)</code>, <code>expression(…)</code> — 보안 차단</li>' +
+      '<li>벤더 프리픽스(<code>-webkit-</code> 등) — 보장 안 됨</li>' +
+      '<li>화이트리스트에 없는 속성은 안 먹힐 수 있음 (경고로 표시)</li>' +
+    '</ul>' +
+    '<h3>특수문자 이스케이프</h3>' +
+    '<table><thead><tr><th>문자</th><th>엔티티</th></tr></thead><tbody>' +
+      ESCAPE_TABLE.map(([c, e]) =>
+        `<tr><td><code>${escapeHtml(c)}</code></td><td><code>${escapeHtml(e)}</code></td></tr>`
+      ).join('') +
+    '</tbody></table>' +
+    '<p class="small muted" style="margin-top:8px;">' +
+      '값 안의 <code>)</code> 같은 특수문자는 마크다운 링크 닫힘으로 오해되기 때문에 ' +
+      '반드시 위 엔티티로 바꿔주세요.' +
+    '</p>';
 }
 
-function updatePreview() {
-  const { type, name, asName, target, raw } = gatherInput();
-  if (!raw.trim()) {
-    state.preview = null;
-    renderChat();
-    renderWarnings(new SanitizeReport());
-    persist();
-    return;
-  }
-  const { html, report } = sanitize(raw);
-  state.preview = { type, name, asName, target, html, isPreview: true };
-  renderChat();
-  renderWarnings(report);
-  persist();
-}
+// ============================================================
+// 8. 영속화
+// ============================================================
 
-function commitMessage() {
-  const { type, name, asName, target, raw } = gatherInput();
-  if (!raw.trim()) return;
-  const { html, report } = sanitize(raw);
-  state.messages.push({ type, name, asName, target, html, isPreview: false });
-  state.preview = null;
-  renderChat();
-  renderWarnings(report);
-  persist();
-}
-
-// ==========================================================
-// 5. 영속화 (localStorage)
-// ==========================================================
-
-const STORAGE_KEY = 'roll20-tester-v1';
+const STORAGE_KEY = 'roll20-chat-preview-v2';
 
 function persist() {
   try {
-    const data = {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
       input: $('#macro-input').value,
-      name:  $('#character-name').value,
-      type:  $('#message-type').value,
-      asName: $('#as-name').value,
-      target: $('#whisper-target').value,
-      theme: $('#chat-window').dataset.theme,
-      messages: state.messages,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (_) { /* quota / private mode 등 무시 */ }
+      sent: state.sent,
+    }));
+  } catch (_) { /* 무시 */ }
 }
-
 function restore() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    if (data.input)  $('#macro-input').value = data.input;
-    if (data.name)   $('#character-name').value = data.name;
-    if (data.type)   $('#message-type').value = data.type;
-    if (data.asName) $('#as-name').value = data.asName;
-    if (data.target) $('#whisper-target').value = data.target;
-    if (data.theme)  switchTheme(data.theme);
-    if (Array.isArray(data.messages)) state.messages = data.messages.map((m) => ({ ...m, isPreview: false }));
-    syncTypeVisibility();
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (!data) return;
+    if (data.input) $('#macro-input').value = data.input;
+    if (Array.isArray(data.sent)) state.sent = data.sent;
   } catch (_) { /* 무시 */ }
 }
 
-// ==========================================================
-// 6. 샘플 매크로
-// ==========================================================
+// ============================================================
+// 9. 샘플
+// ============================================================
 
 const SAMPLES = [
   {
-    title: '컬러 박스',
-    desc: '색상·배경·둥근 모서리',
-    code:
-`<span style="display:inline-block;background:#ffefc7;color:#7a4b00;border:1px solid #d4a13a;padding:4px 10px;border-radius:6px;font-weight:bold;">
-  ⚠ 위험! 함정 발견
-</span>`,
+    title: '기본 색상 + 굵기',
+    desc: '단순한 컬러 텍스트',
+    code: `[두근두근…](#" style="color:#b3242b; font-weight:bold; text-decoration:none;)`,
+  },
+  {
+    title: '서술 (/desc)',
+    desc: '가운데 정렬, 기본 italic+bold',
+    code: `/desc [── 그 일이 일어난 것은, 어느 비 오는 저녁이었다 ──](#" style="color:#666; text-decoration:none;)`,
   },
   {
     title: '대사 박스',
-    desc: '둥근 모서리 + 그림자',
-    code:
-`<div style="background:#fff8ee;border:1px solid #d6c8a4;border-left:4px solid #b3242b;border-radius:6px;padding:10px 14px;margin:4px 0;box-shadow:1px 1px 4px rgba(0,0,0,0.15);">
-  <b style="color:#b3242b;">[홍길동]</b> "오늘은 비가 올 것 같군..."
-</div>`,
+    desc: '테두리 + 둥근 모서리 + 패딩',
+    code: `[ "오늘은 비가 올 것 같군…" ](#" style="display:inline-block; background-color:#fff8ee; border:1px solid #d6c8a4; border-left:4px solid #b3242b; border-radius:6px; padding:6px 10px; color:#333; text-decoration:none;)`,
   },
   {
-    title: '서술용 액자',
-    desc: '가운데 정렬 회상 박스',
-    code:
-`<div style="background:#1a1816;color:#e6dcc4;text-align:center;padding:14px 18px;border-radius:6px;font-family:serif;font-style:italic;letter-spacing:0.04em;">
-  ── 그 일이 일어난 것은, 어느 비 오는 저녁이었다 ──
-</div>`,
+    title: '잡담 (회색 흐릿)',
+    desc: 'Gainsboro + text-decoration:none',
+    code: `[(저 오늘 시험 망했어요…)](#" style="color:Gainsboro; text-decoration:none;)`,
   },
   {
-    title: '주사위 결과 카드',
-    desc: '큰 글자 + 라벨',
-    code:
-`<div style="background:#fff;border:1px solid #ccc;border-radius:6px;padding:10px;text-align:center;">
-  <div style="font-size:11px;color:#888;letter-spacing:0.1em;">PERCEPTION</div>
-  <div style="font-size:32px;font-weight:bold;color:#b3242b;line-height:1;">17</div>
-  <div style="font-size:11px;color:#666;">d20(13) + 4</div>
-</div>`,
+    title: '큰 헤더',
+    desc: 'font-size + letter-spacing',
+    code: `[CHAPTER I](#" style="font-size:18px; font-weight:bold; letter-spacing:0.2em; color:#b3242b; text-decoration:none;)`,
   },
   {
-    title: '테이블',
-    desc: '인벤토리 풍',
-    code:
-`<table style="border-collapse:collapse;width:100%;font-size:13px;">
-  <thead>
-    <tr style="background:#3a342a;color:#f1e9d0;">
-      <th style="padding:4px 8px;text-align:left;">아이템</th>
-      <th style="padding:4px 8px;text-align:right;">수</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr><td style="padding:4px 8px;border-bottom:1px solid #ddd;">치료 포션</td><td style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd;">3</td></tr>
-    <tr><td style="padding:4px 8px;border-bottom:1px solid #ddd;">횃불</td><td style="padding:4px 8px;text-align:right;border-bottom:1px solid #ddd;">5</td></tr>
-    <tr><td style="padding:4px 8px;">금화</td><td style="padding:4px 8px;text-align:right;">128</td></tr>
-  </tbody>
-</table>`,
+    title: 'border-radius + 그림자',
+    desc: '카드 형태',
+    code: `[ 17 ](#" style="display:inline-block; padding:4px 14px; background-color:#b3242b; color:#fff; font-size:18px; font-weight:bold; border-radius:999px; box-shadow:1px 1px 3px rgba&#40;0,0,0,0.3&#41;; text-decoration:none;)`,
   },
   {
-    title: '⚠ flexbox (안 됨)',
-    desc: '경고가 어떻게 뜨는지 보기',
-    code:
-`<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;background:#fee;padding:10px;">
-  <span>왼쪽</span>
-  <span>가운데</span>
-  <span>오른쪽</span>
-</div>`,
+    title: '⚠ calc() 차단 시연',
+    desc: '경고가 어떻게 뜨는지',
+    code: `[테스트](#" style="width:calc&#40;100% - 20px&#41;; color:red;)`,
   },
   {
-    title: '⚠ animation (안 됨)',
-    desc: '애니메이션은 잘림',
-    code:
-`<span style="display:inline-block;color:red;animation:pulse 1s infinite;transform:rotate(5deg);transition:all 0.3s;">
-  반짝!
-</span>`,
-  },
-  {
-    title: '구분선 + 제목',
-    desc: '챕터 헤더',
-    code:
-`<div style="text-align:center;margin:8px 0;">
-  <hr style="border:none;border-top:1px solid #b3242b;margin:6px 0;">
-  <span style="font-family:serif;font-size:18px;font-weight:bold;letter-spacing:0.2em;color:#b3242b;">CHAPTER I</span>
-  <hr style="border:none;border-top:1px solid #b3242b;margin:6px 0;">
-</div>`,
+    title: '⚠ 이스케이프 누락 시연',
+    desc: ') 가 그대로일 때',
+    code: `[깨진 매크로](#" style="background:rgb(255,0,0); color:white;)`,
   },
 ];
 
@@ -653,111 +487,70 @@ function setupSamples() {
   for (const s of SAMPLES) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.innerHTML = `<strong>${escapeText(s.title)}</strong><span>${escapeText(s.desc)}</span>`;
+    btn.innerHTML = `<strong>${escapeHtml(s.title)}</strong><span>${escapeHtml(s.desc)}</span>`;
     btn.addEventListener('click', () => {
       $('#macro-input').value = s.code;
-      updatePreview();
+      update();
     });
     grid.appendChild(btn);
   }
 }
 
-// ==========================================================
-// 7. 치트시트 렌더
-// ==========================================================
+// ============================================================
+// 10. 부트
+// ============================================================
 
-function renderCheatsheet() {
-  $('#cheat-tags').textContent = Array.from(ALLOWED_TAGS).sort().map((t) => `<${t}>`).join(', ');
-  $('#cheat-css').textContent = Array.from(ALLOWED_CSS_PROPS).sort().join(', ');
-}
-
-// ==========================================================
-// 8. 테마 전환
-// ==========================================================
-
-function switchTheme(theme) {
-  $('#chat-window').dataset.theme = theme;
-  for (const tab of $$('.chat-tab')) {
-    tab.classList.toggle('active', tab.dataset.theme === theme);
+function update() {
+  const txt = $('#macro-input').value;
+  if (!txt.trim()) {
+    state.preview = [];
+    renderChat();
+    renderWarnings(new SanitizeReport());
+    persist();
+    return;
   }
+  const { messages, report } = processInput(txt);
+  state.preview = messages;
+  renderChat();
+  renderWarnings(report);
+  persist();
 }
 
-// ==========================================================
-// 9. 메시지 타입에 따른 가시성
-// ==========================================================
-
-function syncTypeVisibility() {
-  const t = $('#message-type').value;
-  $('.as-only').hidden = t !== 'as';
-  $('.whisper-only').hidden = t !== 'whisper';
+function commit() {
+  const txt = $('#macro-input').value;
+  if (!txt.trim()) return;
+  const { messages } = processInput(txt);
+  if (!messages.length) return;
+  state.sent.push(...messages);
+  $('#macro-input').value = '';
+  update();
 }
-
-// ==========================================================
-// 10. 부트스트랩
-// ==========================================================
 
 function setup() {
   setupSamples();
   renderCheatsheet();
   restore();
 
-  const debounced = debounce(updatePreview, 150);
+  const debounced = debounce(update, 120);
   $('#macro-input').addEventListener('input', debounced);
-  $('#character-name').addEventListener('input', debounced);
-  $('#as-name').addEventListener('input', debounced);
-  $('#whisper-target').addEventListener('input', debounced);
-  $('#message-type').addEventListener('change', () => {
-    syncTypeVisibility();
-    updatePreview();
-  });
-
-  $('#send-btn').addEventListener('click', commitMessage);
-  $('#clear-input-btn').addEventListener('click', () => {
-    $('#macro-input').value = '';
-    updatePreview();
-  });
-  $('#clear-chat-btn').addEventListener('click', () => {
-    state.messages = [];
-    renderChat();
-    persist();
-  });
-  $('#copy-btn').addEventListener('click', async () => {
-    const text = $('#macro-input').value;
-    try {
-      await navigator.clipboard.writeText(text);
-      flashButton($('#copy-btn'), '복사됨!');
-    } catch (_) {
-      // fallback
-      const ta = document.createElement('textarea');
-      ta.value = text; document.body.appendChild(ta); ta.select();
-      try { document.execCommand('copy'); flashButton($('#copy-btn'), '복사됨!'); }
-      catch (_) { flashButton($('#copy-btn'), '복사 실패'); }
-      document.body.removeChild(ta);
-    }
-  });
-
-  for (const tab of $$('.chat-tab')) {
-    tab.addEventListener('click', () => {
-      switchTheme(tab.dataset.theme);
-      persist();
-    });
-  }
-
-  // 키보드 단축키: Ctrl/Cmd + Enter 로 전송
   $('#macro-input').addEventListener('keydown', (ev) => {
     if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') {
       ev.preventDefault();
-      commitMessage();
+      commit();
     }
   });
+  $('#send-btn').addEventListener('click', commit);
+  $('#clear-input-btn').addEventListener('click', () => {
+    $('#macro-input').value = '';
+    update();
+  });
+  $('#clear-chat-btn').addEventListener('click', () => {
+    state.sent = [];
+    renderChat();
+    persist();
+  });
 
-  updatePreview();
-}
-
-function flashButton(btn, msg) {
-  const orig = btn.textContent;
-  btn.textContent = msg;
-  setTimeout(() => { btn.textContent = orig; }, 1200);
+  update();
 }
 
 if (document.readyState === 'loading') {

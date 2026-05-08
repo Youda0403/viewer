@@ -1,4 +1,3 @@
-/* ---------- 토큰 ---------- */
 :root {
   --bg: #f4f1ea;
   --pane-bg: #ffffff;
@@ -14,11 +13,8 @@
   --shadow: 0 1px 2px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
   --radius: 8px;
 }
-
 * { box-sizing: border-box; }
-
 html, body { margin: 0; padding: 0; }
-
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
                "Pretendard", "Segoe UI", "Noto Sans KR", Arial, sans-serif;
@@ -27,27 +23,31 @@ body {
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
 }
-
 h1, h2, h3 { margin: 0; font-weight: 700; }
-
-button, input, select, textarea {
-  font: inherit;
-  color: inherit;
+button, input, select, textarea { font: inherit; color: inherit; }
+code, kbd, .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+kbd {
+  background: #fff;
+  border: 1px solid var(--pane-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
 }
 
-code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-
-/* ---------- 헤더 / 푸터 ---------- */
+/* 헤더 */
 .topbar {
   background: linear-gradient(180deg, #2d2926, #1c1916);
   color: #f1efe7;
-  padding: 14px 16px;
+  padding: 12px 16px 14px;
   border-bottom: 3px solid var(--accent);
 }
-.topbar-inner { max-width: 1400px; margin: 0 auto; }
-.topbar h1 { font-size: 18px; letter-spacing: -0.01em; }
-.topbar .tagline { margin: 4px 0 0; font-size: 13px; opacity: 0.78; }
-
+.topbar h1 { font-size: 17px; letter-spacing: -0.01em; }
+.topbar .tagline { margin: 4px 0 0; font-size: 12.5px; opacity: 0.78; }
+.topbar code { background: rgba(255,255,255,0.1); color: #f7e4a8; }
 .footbar {
   padding: 14px 16px;
   text-align: center;
@@ -55,10 +55,10 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
   color: var(--text-muted);
 }
 
-/* ---------- 레이아웃 ---------- */
+/* 레이아웃: 입력 / 채팅 / 경고 */
 .layout {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) 1fr minmax(260px, 340px);
+  grid-template-columns: minmax(280px, 380px) 1fr minmax(260px, 340px);
   gap: 12px;
   padding: 12px;
   max-width: 1400px;
@@ -66,20 +66,13 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
   align-items: start;
 }
 @media (max-width: 1024px) {
-  .layout {
-    grid-template-columns: 1fr 1fr;
-  }
+  .layout { grid-template-columns: 1fr 1fr; }
   .pane-warnings { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  .layout {
-    grid-template-columns: 1fr;
-    padding: 8px;
-    gap: 8px;
-  }
+  .layout { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
 }
 
-/* ---------- 패널 공통 ---------- */
 .pane {
   background: var(--pane-bg);
   border: 1px solid var(--pane-border);
@@ -95,15 +88,12 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
   background: #ebe6d9;
   border-bottom: 1px solid var(--pane-border);
 }
-.pane-head h2 {
-  font-size: 14px;
-  letter-spacing: -0.01em;
-}
+.pane-head h2 { font-size: 14px; }
 .pane-body { padding: 14px; }
 
 .badge {
   display: inline-block;
-  min-width: 20px;
+  min-width: 22px;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--text-muted);
@@ -112,49 +102,34 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
   text-align: center;
   line-height: 1.4;
 }
-.badge[data-level="warn"] { background: var(--warn); }
+.badge[data-level="ok"]     { background: var(--ok); }
+.badge[data-level="warn"]   { background: var(--warn); }
 .badge[data-level="danger"] { background: var(--danger); }
-.badge[data-level="ok"] { background: var(--ok); }
 
-/* ---------- 입력 폼 ---------- */
-.form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.form-row-grid { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; }
-@media (max-width: 480px) {
-  .form-row-grid { grid-template-columns: 1fr; }
-}
-.form-row label { font-size: 13px; color: var(--text-muted); }
-.form-row input[type="text"],
-.form-row select,
-.form-row textarea {
+/* 입력 */
+#macro-input {
   width: 100%;
-  padding: 8px 10px;
+  min-height: 200px;
+  resize: vertical;
+  padding: 10px;
   background: #fff;
   border: 1px solid var(--pane-border);
   border-radius: 6px;
-  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.form-row input[type="text"]:focus,
-.form-row select:focus,
-.form-row textarea:focus {
+#macro-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(179,36,43,0.15);
 }
-.form-row textarea {
-  resize: vertical;
-  min-height: 160px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.hint { color: var(--text-muted); font-size: 12px; }
-
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 6px 0 14px;
+  margin-top: 10px;
 }
 .actions button {
   padding: 8px 14px;
@@ -174,14 +149,21 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 }
 .actions button.primary:hover { background: var(--accent-dark); }
 .actions button.ghost { background: transparent; }
+.hint {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.hint code { background: var(--code-bg); }
 
 details.samples,
 details.cheatsheet {
-  margin-top: 8px;
+  margin-top: 12px;
   border: 1px solid var(--pane-border);
   border-radius: 6px;
   background: #fcfaf3;
 }
+details.cheatsheet { margin: 0; border-radius: 0; border-left: none; border-right: none; border-bottom: none; }
 details summary {
   padding: 8px 12px;
   cursor: pointer;
@@ -213,58 +195,44 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 .sample-grid button strong { display: block; font-size: 13px; margin-bottom: 2px; }
 .sample-grid button span { color: var(--text-muted); }
 
-.cheatsheet-body { padding: 12px; font-size: 12px; }
-.cheatsheet-body h3 { font-size: 12px; margin: 10px 0 4px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.cheatsheet-body h3:first-child { margin-top: 0; }
-.cheatsheet-body .small { font-size: 11.5px; }
-.cheatsheet-body .muted { color: var(--text-muted); }
-.cheatsheet-body code {
-  background: var(--code-bg);
-  padding: 1px 5px;
-  border-radius: 3px;
+.cheatsheet-body {
+  padding: 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.cheatsheet-body h3 {
   font-size: 11.5px;
+  margin: 10px 0 4px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.warn-list { padding-left: 18px; margin: 6px 0; }
-.warn-list li { margin-bottom: 2px; }
-
-/* ---------- 채팅 영역 ---------- */
-.chat-head { display: flex; align-items: center; justify-content: space-between; }
-.chat-tabs { display: flex; gap: 4px; }
-.chat-tab {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--pane-border);
-  background: #fafaf6;
-  cursor: pointer;
+.cheatsheet-body h3:first-child { margin-top: 0; }
+.cheatsheet-body table {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 12px;
+  margin-top: 4px;
 }
-.chat-tab.active {
-  background: var(--accent);
-  border-color: var(--accent-dark);
-  color: #fff;
+.cheatsheet-body th, .cheatsheet-body td {
+  text-align: left;
+  padding: 3px 6px;
+  border-bottom: 1px solid #ece5d3;
 }
+.cheatsheet-body th { background: #f3eee0; font-weight: 600; }
 
+/* 채팅 영역 */
 .chat-window {
   min-height: 480px;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
-  padding: 12px;
-  background: #f7f4ec;
+  padding: 10px 12px;
+  background: #ffffff;
   font-family: "Helvetica Neue", "Apple SD Gothic Neo", Arial, sans-serif;
-  font-size: 14px;
-  color: #1f1d1a;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #333333;
 }
-.chat-window[data-theme="dark"] {
-  background: #2c2926;
-  color: #ddd6c7;
-}
-.chat-window[data-theme="dark"] .chat-msg { background: #3a3631; border-color: #4a463f; color: #e8e1d2; }
-.chat-window[data-theme="dark"] .chat-msg .by { color: #f5e9c8; }
-.chat-window[data-theme="dark"] .chat-msg.desc { background: #423d36; border-color: #5a534a; color: #f1ead8; }
-.chat-window[data-theme="dark"] .chat-msg.em { color: #b9b1a0; }
-.chat-window[data-theme="dark"] .chat-msg.preview { outline-color: rgba(255,200,80,0.5); }
-.chat-window[data-theme="dark"] .chat-empty { color: #998f80; }
-
 .chat-empty {
   text-align: center;
   color: var(--text-muted);
@@ -272,64 +240,88 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
   font-size: 13px;
 }
 
-/* Roll20 채팅 메시지 박스 (실제와 비슷하게) */
+/* Roll20 채팅 메시지 박스 */
 .chat-msg {
-  background: #ffffff;
-  border: 1px solid #d6d1c1;
-  border-radius: 4px;
-  padding: 6px 10px;
-  margin-bottom: 6px;
+  padding: 4px 0;
+  margin: 0;
+  border-bottom: 1px solid #efece2;
   word-wrap: break-word;
   overflow-wrap: break-word;
   position: relative;
 }
-.chat-msg .by {
-  font-weight: 700;
-  color: #1f1d1a;
-  margin-right: 4px;
-}
-.chat-msg .by::after { content: ":"; }
-.chat-msg.em { background: transparent; border: none; padding: 4px 6px; color: #5b574e; font-style: italic; }
-.chat-msg.em .by { color: inherit; font-style: normal; }
-.chat-msg.em .by::after { content: ""; }
-.chat-msg.desc {
-  background: #efebde;
-  border-color: #d3ccb6;
-  text-align: center;
-  font-style: italic;
-  padding: 8px 12px;
-  color: #4a463d;
-}
-.chat-msg.desc .by { display: none; }
-.chat-msg.ooc { background: #eef4ff; border-color: #c7d4ee; }
-.chat-msg.whisper { background: #f1eaff; border-color: #d3c6ec; }
-.chat-msg.whisper .meta { font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 2px; }
+.chat-msg:last-child { border-bottom: none; }
+
 .chat-msg.preview {
-  outline: 2px dashed #d4a13a;
-  outline-offset: 2px;
+  background: #fffbeb;
+  outline: 1px dashed #d4a13a;
+  border-radius: 3px;
+  padding: 4px 6px;
 }
 .chat-msg .preview-tag {
   position: absolute;
-  top: -8px;
-  right: 8px;
+  top: 2px;
+  right: 4px;
   background: #d4a13a;
   color: #fff;
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 9px;
+  padding: 1px 5px;
   border-radius: 999px;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
-.chat-msg .body { display: inline; }
-.chat-msg.desc .body, .chat-msg.em .body { display: inline; }
 
-/* 사용자 컨텐츠 안 이미지가 무한정 커지는 거 방지 */
+.chat-msg .by {
+  font-weight: 700;
+  color: #1f1d1a;
+  margin-right: 3px;
+}
+.chat-msg .by::after { content: ":"; }
+
+/* /desc — 가운데 정렬, bold + italic이 기본 */
+.chat-msg.desc {
+  text-align: center;
+  font-style: italic;
+  font-weight: bold;
+  color: #333333;
+  padding: 6px 8px;
+}
+.chat-msg.desc .by { display: none; }
+
+/* /em, /me — italic */
+.chat-msg.em {
+  font-style: italic;
+  color: #555;
+}
+.chat-msg.em .by { font-style: normal; color: #1f1d1a; }
+.chat-msg.em .by::after { content: ""; }
+.chat-msg.em .by + .body::before { content: " "; }
+
+/* Roll20 본문 안 a 태그 (= 매크로로 만든 스타일 박스) */
+.chat-msg .r20-styled {
+  /* 기본 anchor 표시지만, 색상은 inherit해서 chat 본문 색을 따라간다 */
+  color: inherit;
+  text-decoration: underline;
+  cursor: default;
+}
+.chat-msg .r20-styled:hover {
+  text-decoration: underline;
+}
+
 .chat-msg img { max-width: 100%; height: auto; }
-.chat-msg table { border-collapse: collapse; }
 
-/* ---------- 경고 패널 ---------- */
+/* 경고 패널 */
 .warnings-body { padding: 0; }
-.warnings-body .empty { padding: 14px; color: var(--text-muted); margin: 0; font-size: 13px; }
+.warnings-body .empty {
+  padding: 14px; color: var(--text-muted); margin: 0; font-size: 13px;
+}
+.warn-summary {
+  padding: 10px 14px;
+  background: #f3efe1;
+  border-bottom: 1px solid #e5dec8;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.warn-summary strong { color: var(--text); }
 .warn-item {
   padding: 10px 14px;
   border-bottom: 1px solid #eee5d4;
@@ -345,29 +337,13 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
   margin-right: 6px;
   vertical-align: 1px;
 }
-.warn-item .label[data-kind="tag"]      { background: #fde7c5; color: #8a5d10; }
 .warn-item .label[data-kind="prop"]     { background: #ffd7d2; color: #882015; }
 .warn-item .label[data-kind="value"]    { background: #fff0c0; color: #7a5500; }
-.warn-item .label[data-kind="attr"]     { background: #e3d7f4; color: #5a3796; }
-.warn-item .label[data-kind="vendor"]   { background: #d6eaff; color: #1c4f8a; }
+.warn-item .label[data-kind="syntax"]   { background: #ffe4b3; color: #7a4b00; }
+.warn-item .label[data-kind="escape"]   { background: #d6eaff; color: #1c4f8a; }
 .warn-item .label[data-kind="security"] { background: #ffd0d0; color: #8a0a0a; }
-.warn-item code {
-  background: var(--code-bg);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 12px;
+.warn-item code { font-size: 12px; }
+.warn-item .reason {
+  display: block; margin-top: 4px;
+  color: var(--text-muted); font-size: 12px;
 }
-.warn-item .reason { display: block; margin-top: 4px; color: var(--text-muted); font-size: 12px; }
-
-.warn-summary {
-  padding: 10px 14px;
-  background: #f3efe1;
-  border-bottom: 1px solid #e5dec8;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.warn-summary strong { color: var(--text); }
-
-/* utility */
-.small { font-size: 12px; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }

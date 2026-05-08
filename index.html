@@ -4,100 +4,46 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f1efe7" />
-  <title>Roll20 CSS 매크로 테스터</title>
+  <title>Roll20 채팅 미리보기</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="topbar-inner">
-      <h1>Roll20 CSS 매크로 테스터</h1>
-      <p class="tagline">롤20 채팅창에 직접 안 보내도 매크로가 어떻게 보일지 미리 확인할 수 있어요.</p>
-    </div>
+    <h1>Roll20 채팅 미리보기</h1>
+    <p class="tagline">롤20에 직접 보내지 않고도 <code>[내용](#" style="…)</code> 매크로 결과를 바로 확인.</p>
   </header>
 
   <main class="layout">
-    <section class="pane pane-input" aria-label="입력">
-      <div class="pane-head">
-        <h2>매크로 입력</h2>
-      </div>
+    <section class="pane pane-input">
+      <div class="pane-head"><h2>입력</h2></div>
       <div class="pane-body">
-        <div class="form-row form-row-grid">
-          <label for="character-name">캐릭터 이름</label>
-          <input type="text" id="character-name" value="홍길동" autocomplete="off" />
-        </div>
-        <div class="form-row form-row-grid">
-          <label for="message-type">메시지 타입</label>
-          <select id="message-type">
-            <option value="say">일반 채팅 (/say)</option>
-            <option value="em">이모트 (/em, /me)</option>
-            <option value="desc">서술 (/desc)</option>
-            <option value="as">다른 이름으로 말하기 (/as)</option>
-            <option value="ooc">OOC (밖얘기, 기본)</option>
-            <option value="whisper">귓속말 (/w)</option>
-          </select>
-        </div>
-        <div class="form-row form-row-grid as-only" hidden>
-          <label for="as-name">/as 표시 이름</label>
-          <input type="text" id="as-name" value="NPC" autocomplete="off" />
-        </div>
-        <div class="form-row form-row-grid whisper-only" hidden>
-          <label for="whisper-target">귓속말 대상</label>
-          <input type="text" id="whisper-target" value="GM" autocomplete="off" />
-        </div>
-        <div class="form-row">
-          <label for="macro-input">HTML/CSS 매크로</label>
-          <textarea id="macro-input" rows="12" spellcheck="false" placeholder='<span style="color:#c00;font-weight:bold;">두근두근...</span>'></textarea>
-          <small class="hint">입력하는 동안 옆 채팅창에 실시간 미리보기가 떠요.</small>
-        </div>
+        <textarea id="macro-input" rows="14" spellcheck="false"
+          placeholder='/desc [비가 내리고 있다.](#" style="color:#666; font-style:italic;)'></textarea>
         <div class="actions">
           <button type="button" id="send-btn" class="primary">전송</button>
-          <button type="button" id="copy-btn">매크로 복사</button>
           <button type="button" id="clear-input-btn">입력 지우기</button>
           <button type="button" id="clear-chat-btn" class="ghost">채팅창 비우기</button>
         </div>
+        <p class="hint">
+          줄마다 한 메시지로 처리해요. <code>/desc</code>, <code>/em</code>, <code>/me</code>, <code>/say</code> 명령어 인식.
+          <kbd>Ctrl/⌘ + Enter</kbd> = 전송.
+        </p>
 
         <details class="samples">
           <summary>예제 매크로 불러오기</summary>
           <div class="sample-grid" id="sample-grid"></div>
         </details>
-
-        <details class="cheatsheet">
-          <summary>되는 것 / 안 되는 것 한눈에 보기</summary>
-          <div class="cheatsheet-body">
-            <h3>허용되는 HTML 태그</h3>
-            <p class="mono small" id="cheat-tags"></p>
-            <h3>허용되는 주요 CSS 속성</h3>
-            <p class="mono small" id="cheat-css"></p>
-            <h3>채팅창에서 안 먹히는 속성/값</h3>
-            <ul class="warn-list">
-              <li><code>display: flex / grid</code> 와 그에 딸린 <code>gap</code>, <code>align-*</code>, <code>justify-*</code>, <code>flex-*</code>, <code>grid-*</code></li>
-              <li><code>position: fixed / sticky</code>, <code>z-index</code> (불안정)</li>
-              <li><code>transform</code>, <code>animation</code>, <code>transition</code>, <code>@keyframes</code></li>
-              <li><code>filter</code>, <code>backdrop-filter</code>, <code>clip-path</code>, <code>mix-blend-mode</code></li>
-              <li><code>cursor</code>, <code>pointer-events</code>, <code>user-select</code></li>
-              <li><code>-webkit-…</code> 같은 벤더 프리픽스 전부</li>
-              <li><code>&lt;script&gt;</code>, <code>&lt;style&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;form&gt;</code>, <code>javascript:</code> 링크</li>
-            </ul>
-            <p class="small muted">출처: Roll20 Wiki (CSS, Macros/Formatting), 커뮤니티 포럼 정리. 실제 Roll20는 화이트리스트 방식의 sanitizer를 쓰기 때문에 위 목록 외에도 새 CSS 속성은 대부분 잘립니다.</p>
-          </div>
-        </details>
       </div>
     </section>
 
-    <section class="pane pane-chat" aria-label="채팅 미리보기">
-      <div class="pane-head chat-head">
-        <h2>채팅 미리보기</h2>
-        <div class="chat-tabs">
-          <button type="button" class="chat-tab active" data-theme="light">라이트</button>
-          <button type="button" class="chat-tab" data-theme="dark">다크</button>
-        </div>
-      </div>
-      <div class="chat-window" id="chat-window" data-theme="light">
-        <div class="chat-empty" id="chat-empty">아직 메시지가 없어요. 왼쪽에 매크로를 입력하면 여기에 미리보기가 나타나요.</div>
+    <section class="pane pane-chat">
+      <div class="pane-head"><h2>채팅 미리보기</h2></div>
+      <div class="chat-window" id="chat-window">
+        <div class="chat-empty" id="chat-empty">왼쪽에 매크로를 입력하면 여기에 미리보기가 떠요.</div>
       </div>
     </section>
 
-    <aside class="pane pane-warnings" aria-label="필터 결과">
+    <aside class="pane pane-warnings">
       <div class="pane-head">
         <h2>필터 결과</h2>
         <span class="badge" id="warn-badge">0</span>
@@ -105,11 +51,16 @@
       <div class="pane-body warnings-body" id="warnings-body">
         <p class="empty">아직 검사할 매크로가 없어요.</p>
       </div>
+      <details class="cheatsheet">
+        <summary>되는 속성 / 안 되는 것</summary>
+        <div class="cheatsheet-body" id="cheatsheet-body"></div>
+      </details>
     </aside>
   </main>
 
   <footer class="footbar">
-    <p>Roll20 자체 sanitizer를 100% 똑같이 흉내내진 못하지만, 위키와 커뮤니티에서 검증된 화이트리스트를 기준으로 가장 흔한 차단 규칙을 반영했어요.</p>
+    <p>출처: <em>danharu0920</em>, <em>베베까까</em> 두 블로그 글 기반.
+       sanitizer는 두 글에 명시된 동작/금지 사항(<code>calc()</code> 차단, 특수문자 escape 등)을 반영했어요.</p>
   </footer>
 
   <script src="app.js"></script>
