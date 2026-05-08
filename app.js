@@ -14,11 +14,9 @@
 // ============================================================
 
 const ALLOWED_PROPS = new Set([
-  // color & background
   'color', 'background', 'background-color', 'background-image',
   'background-size', 'background-position', 'background-repeat',
   'background-attachment', 'background-origin', 'background-clip',
-  // font / text
   'font', 'font-family', 'font-size', 'font-weight', 'font-style',
   'font-variant', 'font-stretch',
   'text-decoration', 'text-decoration-line', 'text-decoration-color',
@@ -27,7 +25,6 @@ const ALLOWED_PROPS = new Set([
   'letter-spacing', 'word-spacing', 'line-height',
   'word-break', 'word-wrap', 'overflow-wrap', 'white-space',
   'direction',
-  // box
   'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
   'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
   'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
@@ -41,11 +38,9 @@ const ALLOWED_PROPS = new Set([
   'border-bottom-left-radius', 'border-bottom-right-radius',
   'border-collapse', 'border-spacing',
   'box-shadow', 'box-sizing',
-  // size / layout
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
   'display', 'vertical-align', 'visibility', 'opacity',
   'float', 'clear', 'overflow', 'overflow-x', 'overflow-y',
-  // list
   'list-style', 'list-style-type', 'list-style-position', 'list-style-image',
 ]);
 
@@ -58,7 +53,6 @@ const BLOCKED_PATTERNS = {
                 msg: 'url(javascript:…) 는 차단됩니다.' },
 };
 
-// 명령어 prefix.
 const COMMANDS = [
   { name: 'desc', re: /^\/desc\s+/i },
   { name: 'em',   re: /^\/em\s+/i },
@@ -96,14 +90,17 @@ function escapeHtml(s) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 const debounce = (fn, ms) => {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 };
 
-// 고유 placeholder 토큰 — 입력에 없는 안전한 문자열.
-const PH_OPEN = 'R20';
-const PH_CLOSE = '';
+// 입력에 등장 가능성 매우 낮은 placeholder 토큰.
+const PH_OPEN = '\x01R20\x01';
+const PH_CLOSE = '\x01';
 
 // ============================================================
 // 3. SanitizeReport
@@ -171,7 +168,6 @@ function validateDecl(decl, report) {
   }
   const { prop, value } = decl;
 
-  // 괄호 짝이 안 맞으면 이스케이프 누락 (rgb(0,0,0) 의 ) 가 마크다운 닫힘으로 잡힌 경우).
   const opens = (value.match(/\(/g) || []).length;
   const closes = (value.match(/\)/g) || []).length;
   if (opens !== closes) {
@@ -204,21 +200,37 @@ function validateDecl(decl, report) {
 // 5. Roll20 마크다운 파서
 // ============================================================
 
-// [text](URL #" style="DECLS)
-// URL 부분(#" 앞)은 비어있어도 되고 매크로 명령/외부 URL이 들어가도 된다.
-// lazy 매칭으로 한 줄에 여러 매크로가 연달아 와도 각각 끊어 잡는다.
 const STYLE_LINK_RE =
   /\[([^\]]*)\]\(([^)]*?)#\s*"\s*style\s*=\s*"([^)]*)\)/g;
 
 const NORMAL_LINK_RE =
   /\[([^\]]*)\]\(((?:https?:\/\/|mailto:|#)[^)\s]*)\)/g;
 
+// 이미지 URL 자동 인식 (확장자 기반).
+const IMAGE_URL_RE =
+  /(https?:\/\/[^\s<>"'()]+\.(?:png|jpe?g|gif|webp|svg|bmp))(\?[^\s<>"'()]*)?/gi;
+
+// 백틱 인라인 코드 — 1개 또는 2개 (대칭).
+const BACKTICK_RE = /(`+)([\s\S]+?)\1/g;
+
+// Roll20 query: ?{prompt}, ?{prompt|default}, ?{prompt|opt1|opt2}.
+const QUERY_RE = /\?\{([^}]+)\}/g;
+
+function substituteQueries(text) {
+  return text.replace(QUERY_RE, (_m, inner) => {
+    const parts = inner.split('|');
+    if (parts.length === 1) return parts[0].trim();
+    // |default 형태면 default 표시, 옵션 dropdown(opt,val)면 첫 옵션의 라벨.
+    const second = parts[1];
+    return second.split(',')[0].trim();
+  });
+}
+
 function detectCommand(line) {
   for (const c of COMMANDS) {
     if (c.re.test(line)) {
       const rest = line.replace(c.re, '');
       if (c.name === 'as') {
-        // /as <speaker> <message>  — 따옴표로 감싼 이름은 공백 포함 허용.
         const m = rest.match(/^("[^"]+"|'[^']+'|\S+)\s*([\s\S]*)$/);
         const speaker = m ? m[1].replace(/^["']|["']$/g, '') : '';
         const body = m ? m[2] : rest;
@@ -231,15 +243,18 @@ function detectCommand(line) {
 }
 
 function processInline(line, report) {
-  // 1) Roll20 style 링크를 placeholder 로 치환.
+  // 0) ?{질문} 치환 — 가장 먼저 (다른 패턴 안에도 들어있을 수 있음).
+  let work = substituteQueries(line);
+
+  // 1) Roll20 styled link → placeholder
   const placeholders = [];
-  let work = line.replace(STYLE_LINK_RE, (_, text, prefix, decls) => {
+  work = work.replace(STYLE_LINK_RE, (_, text, prefix, decls) => {
     const i = placeholders.length;
     placeholders.push({ kind: 'styled', text, prefix, decls });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 2) 일반 링크.
+  // 2) 일반 마크다운 링크 → placeholder
   work = work.replace(NORMAL_LINK_RE, (_, text, url) => {
     if (/^javascript:/i.test(url)) {
       report.add('security', `[${text}](${url})`, 'javascript: 링크는 차단됩니다.');
@@ -250,7 +265,22 @@ function processInline(line, report) {
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 3) 처리 안 된 [text](...#...) 패턴 — 매크로 트릭이지만 닫힘이 깨진 경우.
+  // 3) 미처 들어가지 못한 이미지 URL → <img>
+  work = work.replace(IMAGE_URL_RE, (_m, base, query) => {
+    const url = base + (query || '');
+    const i = placeholders.length;
+    placeholders.push({ kind: 'image', url });
+    return `${PH_OPEN}${i}${PH_CLOSE}`;
+  });
+
+  // 4) 백틱 인라인 코드 → placeholder
+  work = work.replace(BACKTICK_RE, (_m, _ticks, code) => {
+    const i = placeholders.length;
+    placeholders.push({ kind: 'code', code });
+    return `${PH_OPEN}${i}${PH_CLOSE}`;
+  });
+
+  // 5) 처리 안 된 [text](...#...) — 매크로 트릭이지만 escape 깨짐
   const stray = work.match(/\[[^\]]*\]\([^)]*#[^)]*\)/);
   if (stray) {
     report.add('escape', stray[0],
@@ -258,29 +288,30 @@ function processInline(line, report) {
       '&#41; &#93; &quot; &#63; &#64; &#37; 처럼 escape 해줘야 해요.');
   }
 
-  // 4) HTML escape 후 마크다운 처리.
+  // 6) HTML escape + 마크다운 처리
   let html = escapeHtml(work);
   html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
   html = html.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
   html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
 
-  // 5) placeholder 복원.
+  // 7) placeholder 복원
   const placeholderRe = new RegExp(
     escapeRegex(PH_OPEN) + '(\\d+)' + escapeRegex(PH_CLOSE),
     'g',
   );
   html = html.replace(placeholderRe, (_m, idx) => {
     const p = placeholders[+idx];
-    if (p.kind === 'styled') return renderStyledLink(p, report);
-    return renderNormalLink(p);
+    switch (p.kind) {
+      case 'styled': return renderStyledLink(p, report);
+      case 'normal': return renderNormalLink(p);
+      case 'image':  return renderImage(p);
+      case 'code':   return renderCode(p);
+    }
+    return '';
   });
 
   return html;
-}
-
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function renderStyledLink(p, report) {
@@ -293,7 +324,6 @@ function renderStyledLink(p, report) {
   }
   const text = decodeEntities(p.text);
   const styleStr = survived.join('; ');
-  // prefix 가 진짜 외부 URL이면 클릭 가능하게, 매크로 명령이면 비활성.
   const prefix = (p.prefix || '').trim();
   const isExternal = /^https?:\/\//i.test(prefix);
   const href = isExternal ? prefix : '#';
@@ -304,6 +334,14 @@ function renderStyledLink(p, report) {
 
 function renderNormalLink(p) {
   return `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(decodeEntities(p.text))}</a>`;
+}
+
+function renderImage(p) {
+  return `<img class="r20-image" src="${escapeHtml(p.url)}" alt="" loading="lazy">`;
+}
+
+function renderCode(p) {
+  return `<code class="r20-code">${escapeHtml(decodeEntities(p.code))}</code>`;
 }
 
 // ============================================================
@@ -331,10 +369,7 @@ function processInput(text) {
 // 7. 렌더링
 // ============================================================
 
-const state = {
-  sent: [],
-  preview: [],
-};
+const state = { sent: [], preview: [] };
 
 function buildMsgEl({ type, html, speaker }) {
   const el = document.createElement('div');
@@ -459,78 +494,7 @@ function restore() {
 }
 
 // ============================================================
-// 9. 샘플
-// ============================================================
-
-const SAMPLES = [
-  {
-    title: '기본 색상 + 굵기',
-    desc: '단순한 컬러 텍스트',
-    code: `[두근두근…](#" style="color:#b3242b; font-weight:bold; text-decoration:none;)`,
-  },
-  {
-    title: '서술 (/desc)',
-    desc: '가운데 정렬, 기본 italic+bold',
-    code: `/desc [── 그 일이 일어난 것은, 어느 비 오는 저녁이었다 ──](#" style="color:#666; text-decoration:none;)`,
-  },
-  {
-    title: '/as 다른 사람으로',
-    desc: '옅은 푸른색 박스',
-    code: `/as 시벨 안녕하세요, 처음 뵙겠습니다.`,
-  },
-  {
-    title: '/as + 스타일',
-    desc: '/as 도 [내용](#"…) 와 같이 쓸 수 있어요',
-    code: `/as NPC [의뢰가 있다](#" style="color:#1f4d7a; font-weight:bold;)`,
-  },
-  {
-    title: '대사 박스',
-    desc: '테두리 + 둥근 모서리 + 패딩',
-    code: `[ "오늘은 비가 올 것 같군…" ](#" style="display:inline-block; background-color:#fff8ee; border:1px solid #d6c8a4; border-left:4px solid #b3242b; border-radius:6px; padding:6px 10px; color:#333; text-decoration:none;)`,
-  },
-  {
-    title: '잡담 (회색 흐릿)',
-    desc: 'Gainsboro + text-decoration:none',
-    code: `[(저 오늘 시험 망했어요…)](#" style="color:Gainsboro; text-decoration:none;)`,
-  },
-  {
-    title: '큰 헤더',
-    desc: 'font-size + letter-spacing',
-    code: `[CHAPTER I](#" style="font-size:18px; font-weight:bold; letter-spacing:0.2em; color:#b3242b; text-decoration:none;)`,
-  },
-  {
-    title: '선택지 매크로 버튼',
-    desc: 'URL 부분에 매크로를 넣어 클릭 시 실행',
-    code: `/desc [어떻게 할까?](#" style="text-decoration:none; font-weight:bold;)[ ▶ 손을 잡는다](!&#13;/desc 손을 잡았다. #" style="text-decoration:none; display:block; color:#fff; background:#0d0d0d; border-radius:20px; padding:5px 15px; text-align:left;)[ ▶ 거절한다](!&#13;/desc 거절했다. #" style="text-decoration:none; display:block; color:#fff; background:#5a0d0d; border-radius:20px; padding:5px 15px; text-align:left; margin-top:3px;)`,
-  },
-  {
-    title: '⚠ calc() 차단 시연',
-    desc: '경고가 어떻게 뜨는지',
-    code: `[테스트](#" style="width:calc&#40;100% - 20px&#41;; color:red;)`,
-  },
-  {
-    title: '⚠ 이스케이프 누락 시연',
-    desc: ') 가 그대로일 때',
-    code: `[빨강](#" style="background:rgb(255,0,0);)`,
-  },
-];
-
-function setupSamples() {
-  const grid = $('#sample-grid');
-  for (const s of SAMPLES) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.innerHTML = `<strong>${escapeHtml(s.title)}</strong><span>${escapeHtml(s.desc)}</span>`;
-    btn.addEventListener('click', () => {
-      $('#macro-input').value = s.code;
-      update();
-    });
-    grid.appendChild(btn);
-  }
-}
-
-// ============================================================
-// 10. 부트
+// 9. 부트
 // ============================================================
 
 function update() {
@@ -560,7 +524,6 @@ function commit() {
 }
 
 function setup() {
-  setupSamples();
   renderCheatsheet();
   restore();
 
@@ -577,9 +540,13 @@ function setup() {
     $('#macro-input').value = '';
     update();
   });
+  // 채팅창 비우기 — 입력/preview/sent 전부 리셋.
   $('#clear-chat-btn').addEventListener('click', () => {
     state.sent = [];
+    state.preview = [];
+    $('#macro-input').value = '';
     renderChat();
+    renderWarnings(new SanitizeReport());
     persist();
   });
 
