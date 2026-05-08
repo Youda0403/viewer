@@ -61,19 +61,6 @@ const COMMANDS = [
   { name: 'as',   re: /^\/as\s+/i },
 ];
 
-const ESCAPE_TABLE = [
-  ['space (빈칸 여러개)', '&nbsp;'],
-  ['%',  '&#37;'],
-  ['}',  '&#125;'],
-  [')',  '&#41;'],
-  ['?',  '&#63;'],
-  ['@',  '&#64;'],
-  ['[',  '&#91;'],
-  [']',  '&#93;'],
-  ['|',  '&#124;'],
-  ['"',  '&quot;'],
-];
-
 // ============================================================
 // 2. 유틸
 // ============================================================
@@ -369,7 +356,7 @@ function processInput(text) {
 // 7. 렌더링
 // ============================================================
 
-const state = { sent: [], preview: [] };
+const state = { messages: [] };
 
 function buildMsgEl({ type, html, speaker }) {
   const el = document.createElement('div');
@@ -391,15 +378,14 @@ function buildMsgEl({ type, html, speaker }) {
 function renderChat() {
   const win = $('#chat-window');
   win.innerHTML = '';
-  const all = [...state.sent, ...state.preview];
-  if (all.length === 0) {
+  if (state.messages.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
     empty.textContent = '왼쪽에 매크로를 입력하면 여기에 미리보기가 떠요.';
     win.appendChild(empty);
     return;
   }
-  for (const m of all) win.appendChild(buildMsgEl(m));
+  for (const m of state.messages) win.appendChild(buildMsgEl(m));
   win.scrollTop = win.scrollHeight;
 }
 
@@ -444,43 +430,16 @@ function renderWarnings(report) {
   }
 }
 
-function renderCheatsheet() {
-  const body = $('#cheatsheet-body');
-  body.innerHTML =
-    '<h3>되는 속성 (블로그 검증)</h3>' +
-    '<p class="mono small">' +
-      Array.from(ALLOWED_PROPS).sort().join(', ') +
-    '</p>' +
-    '<h3>막혀있거나 의심스러운 것</h3>' +
-    '<ul>' +
-      '<li><code>calc(…)</code> — Roll20에서 명시적으로 막아놓음</li>' +
-      '<li><code>url(javascript:…)</code>, <code>expression(…)</code> — 보안 차단</li>' +
-      '<li>벤더 프리픽스(<code>-webkit-</code> 등) — 보장 안 됨</li>' +
-      '<li>화이트리스트에 없는 속성은 안 먹힐 수 있음 (경고로 표시)</li>' +
-    '</ul>' +
-    '<h3>특수문자 이스케이프</h3>' +
-    '<table><thead><tr><th>문자</th><th>엔티티</th></tr></thead><tbody>' +
-      ESCAPE_TABLE.map(([c, e]) =>
-        `<tr><td><code>${escapeHtml(c)}</code></td><td><code>${escapeHtml(e)}</code></td></tr>`
-      ).join('') +
-    '</tbody></table>' +
-    '<p class="small muted" style="margin-top:8px;">' +
-      '값 안의 <code>)</code> 같은 특수문자는 마크다운 링크 닫힘으로 오해되기 때문에 ' +
-      '반드시 위 엔티티로 바꿔주세요.' +
-    '</p>';
-}
-
 // ============================================================
 // 8. 영속화
 // ============================================================
 
-const STORAGE_KEY = 'roll20-chat-preview-v3';
+const STORAGE_KEY = 'roll20-chat-preview-v4';
 
 function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       input: $('#macro-input').value,
-      sent: state.sent,
     }));
   } catch (_) { /* 무시 */ }
 }
@@ -489,7 +448,6 @@ function restore() {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!data) return;
     if (data.input) $('#macro-input').value = data.input;
-    if (Array.isArray(data.sent)) state.sent = data.sent;
   } catch (_) { /* 무시 */ }
 }
 
@@ -500,54 +458,53 @@ function restore() {
 function update() {
   const txt = $('#macro-input').value;
   if (!txt.trim()) {
-    state.preview = [];
+    state.messages = [];
     renderChat();
     renderWarnings(new SanitizeReport());
     persist();
     return;
   }
   const { messages, report } = processInput(txt);
-  state.preview = messages;
+  state.messages = messages;
   renderChat();
   renderWarnings(report);
   persist();
 }
 
-function commit() {
-  const txt = $('#macro-input').value;
-  if (!txt.trim()) return;
-  const { messages } = processInput(txt);
-  if (!messages.length) return;
-  state.sent.push(...messages);
-  $('#macro-input').value = '';
-  update();
+async function copyMacro() {
+  const text = $('#macro-input').value;
+  if (!text) return;
+  const btn = $('#copy-btn');
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = '복사됨!';
+  } catch (_) {
+    // file:// / 권한 없는 환경 fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { /* 무시 */ }
+    document.body.removeChild(ta);
+    btn.textContent = ok ? '복사됨!' : '복사 실패';
+  }
+  setTimeout(() => { btn.textContent = original; }, 1200);
 }
 
 function setup() {
-  renderCheatsheet();
   restore();
 
   const debounced = debounce(update, 120);
   $('#macro-input').addEventListener('input', debounced);
-  $('#macro-input').addEventListener('keydown', (ev) => {
-    if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') {
-      ev.preventDefault();
-      commit();
-    }
-  });
-  $('#send-btn').addEventListener('click', commit);
+
+  $('#copy-btn').addEventListener('click', copyMacro);
   $('#clear-input-btn').addEventListener('click', () => {
     $('#macro-input').value = '';
     update();
-  });
-  // 채팅창 비우기 — 입력/preview/sent 전부 리셋.
-  $('#clear-chat-btn').addEventListener('click', () => {
-    state.sent = [];
-    state.preview = [];
-    $('#macro-input').value = '';
-    renderChat();
-    renderWarnings(new SanitizeReport());
-    persist();
   });
 
   update();

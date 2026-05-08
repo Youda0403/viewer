@@ -20,14 +20,12 @@
         <textarea id="macro-input" rows="14" spellcheck="false"
           placeholder='/desc [비가 내리고 있다.](#" style="color:#666; font-style:italic;)'></textarea>
         <div class="actions">
-          <button type="button" id="send-btn" class="primary">전송</button>
+          <button type="button" id="copy-btn" class="primary">코드 복사</button>
           <button type="button" id="clear-input-btn">입력 지우기</button>
-          <button type="button" id="clear-chat-btn" class="ghost">채팅창 비우기</button>
         </div>
         <p class="hint">
           줄마다 한 메시지로 처리해요. <code>/desc</code>, <code>/em</code>, <code>/me</code>, <code>/say</code>, <code>/as</code> 인식.
           <code>?{질문}</code> 은 질문 텍스트로, 이미지 URL은 이미지로, <code>`코드`</code> 는 코랄색 인라인 코드로 표시돼요.
-          <kbd>Ctrl/⌘ + Enter</kbd> = 전송.
         </p>
       </div>
     </section>
@@ -47,10 +45,6 @@
       <div class="pane-body warnings-body" id="warnings-body">
         <p class="empty">아직 검사할 매크로가 없어요.</p>
       </div>
-      <details class="cheatsheet">
-        <summary>되는 속성 / 안 되는 것</summary>
-        <div class="cheatsheet-body" id="cheatsheet-body"></div>
-      </details>
     </aside>
   </main>
 
