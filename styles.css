@@ -251,25 +251,6 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 }
 .chat-msg:last-child { border-bottom: none; }
 
-.chat-msg.preview {
-  background: #fffbeb;
-  outline: 1px dashed #d4a13a;
-  border-radius: 3px;
-  padding: 4px 6px;
-}
-.chat-msg .preview-tag {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  background: #d4a13a;
-  color: #fff;
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
 .chat-msg .by {
   font-weight: 700;
   color: #1f1d1a;
@@ -295,6 +276,16 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 .chat-msg.em .by { font-style: normal; color: #1f1d1a; }
 .chat-msg.em .by::after { content: ""; }
 .chat-msg.em .by + .body::before { content: " "; }
+
+/* /as — 옅은 푸른색 박스 (다른 인물로 말하기) */
+.chat-msg.as {
+  background: #e8f1f8;
+  border: 1px solid #c5d8e8;
+  border-radius: 3px;
+  padding: 4px 8px;
+  margin: 2px 0;
+}
+.chat-msg.as .by { color: #1f4d7a; }
 
 /* Roll20 본문 안 a 태그 (= 매크로로 만든 스타일 박스) */
 .chat-msg .r20-styled {

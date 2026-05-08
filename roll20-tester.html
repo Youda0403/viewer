@@ -259,25 +259,6 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 }
 .chat-msg:last-child { border-bottom: none; }
 
-.chat-msg.preview {
-  background: #fffbeb;
-  outline: 1px dashed #d4a13a;
-  border-radius: 3px;
-  padding: 4px 6px;
-}
-.chat-msg .preview-tag {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  background: #d4a13a;
-  color: #fff;
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
 .chat-msg .by {
   font-weight: 700;
   color: #1f1d1a;
@@ -303,6 +284,16 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 .chat-msg.em .by { font-style: normal; color: #1f1d1a; }
 .chat-msg.em .by::after { content: ""; }
 .chat-msg.em .by + .body::before { content: " "; }
+
+/* /as — 옅은 푸른색 박스 (다른 인물로 말하기) */
+.chat-msg.as {
+  background: #e8f1f8;
+  border: 1px solid #c5d8e8;
+  border-radius: 3px;
+  padding: 4px 8px;
+  margin: 2px 0;
+}
+.chat-msg.as .by { color: #1f4d7a; }
 
 /* Roll20 본문 안 a 태그 (= 매크로로 만든 스타일 박스) */
 .chat-msg .r20-styled {
@@ -418,9 +409,8 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 /**
  * Roll20 채팅 미리보기.
  *
- * 입력 형식: [내용](#" style="prop: value; …)  형태의 Roll20 마크다운 트릭.
- * Roll20 채팅 sanitizer 가 막는 calc() 등을 똑같이 막고,
- * 특수문자(`)`, `]`, `"` 등) 이스케이프 누락을 안내한다.
+ * 입력 형식: [내용](URL #" style="prop: value; …)  형태의 Roll20 마크다운 트릭.
+ * URL 부분은 비어있을 수도, 매크로 명령(!&#13;/desc …)이나 외부 URL일 수도 있다.
  *
  * 출처: danharu0920 블로그(롤꾸용 CSS 입문),
  *       베베까까 블로그(Roll20 채팅로그 꾸미기 / 롤꾸하는데 도움되는 CSS 모음).
@@ -431,7 +421,6 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
 // 1. 화이트리스트 / 차단 패턴
 // ============================================================
 
-// 베베까까 블로그에서 동작 확인된 속성 + 같은 카테고리의 변형까지.
 const ALLOWED_PROPS = new Set([
   // color & background
   'color', 'background', 'background-color', 'background-image',
@@ -468,7 +457,6 @@ const ALLOWED_PROPS = new Set([
   'list-style', 'list-style-type', 'list-style-position', 'list-style-image',
 ]);
 
-// Roll20에서 명시적으로 막은 / 보안상 막아야 하는 패턴.
 const BLOCKED_PATTERNS = {
   calc:       { re: /\bcalc\s*\(/i,
                 msg: 'Roll20는 calc() 수식을 막아놨어요. 고정값으로 바꿔주세요.' },
@@ -484,9 +472,9 @@ const COMMANDS = [
   { name: 'em',   re: /^\/em\s+/i },
   { name: 'em',   re: /^\/me\s+/i },
   { name: 'say',  re: /^\/say\s+/i },
+  { name: 'as',   re: /^\/as\s+/i },
 ];
 
-// 베베까까 블로그의 escape 표.
 const ESCAPE_TABLE = [
   ['space (빈칸 여러개)', '&nbsp;'],
   ['%',  '&#37;'],
@@ -520,6 +508,10 @@ const debounce = (fn, ms) => {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 };
+
+// 고유 placeholder 토큰 — 입력에 없는 안전한 문자열.
+const PH_OPEN = 'R20';
+const PH_CLOSE = '';
 
 // ============================================================
 // 3. SanitizeReport
@@ -587,12 +579,12 @@ function validateDecl(decl, report) {
   }
   const { prop, value } = decl;
 
-  // 괄호 짝이 안 맞으면 이스케이프 누락 (e.g. rgb(0,0,0) 의 ) 가 마크다운 닫힘으로 잡힌 경우).
+  // 괄호 짝이 안 맞으면 이스케이프 누락 (rgb(0,0,0) 의 ) 가 마크다운 닫힘으로 잡힌 경우).
   const opens = (value.match(/\(/g) || []).length;
   const closes = (value.match(/\)/g) || []).length;
   if (opens !== closes) {
     report.add('escape', `${prop}: ${value}`,
-      `괄호 짝이 안 맞아요. 값 안의 ) 는 &#41; 로, ( 는 &#40; 로 이스케이프해주세요.`);
+      '괄호 짝이 안 맞아요. 값 안의 ) 는 &#41; 로, ( 는 &#40; 로 이스케이프해주세요.');
     return null;
   }
 
@@ -611,7 +603,6 @@ function validateDecl(decl, report) {
       report.add('prop', prop,
         `${prop} 은 두 블로그가 검증한 속성 목록에 없어요. Roll20에서 안 먹힐 수 있습니다.`);
     }
-    // 화이트리스트에 없어도 미리보기에선 보이게는 둠.
     return decl;
   }
   return decl;
@@ -621,65 +612,83 @@ function validateDecl(decl, report) {
 // 5. Roll20 마크다운 파서
 // ============================================================
 
-// [text](#"style="DECLS)  /  [text](#" style="DECLS)
+// [text](URL #" style="DECLS)
+// URL 부분(#" 앞)은 비어있어도 되고 매크로 명령/외부 URL이 들어가도 된다.
+// lazy 매칭으로 한 줄에 여러 매크로가 연달아 와도 각각 끊어 잡는다.
 const STYLE_LINK_RE =
-  /\[([^\]]*)\]\(\s*#\s*"\s*style\s*=\s*"([^)]*)\)/g;
+  /\[([^\]]*)\]\(([^)]*?)#\s*"\s*style\s*=\s*"([^)]*)\)/g;
 
-// 일반 마크다운 링크
 const NORMAL_LINK_RE =
   /\[([^\]]*)\]\(((?:https?:\/\/|mailto:|#)[^)\s]*)\)/g;
 
 function detectCommand(line) {
   for (const c of COMMANDS) {
-    if (c.re.test(line)) return { name: c.name, rest: line.replace(c.re, '') };
+    if (c.re.test(line)) {
+      const rest = line.replace(c.re, '');
+      if (c.name === 'as') {
+        // /as <speaker> <message>  — 따옴표로 감싼 이름은 공백 포함 허용.
+        const m = rest.match(/^("[^"]+"|'[^']+'|\S+)\s*([\s\S]*)$/);
+        const speaker = m ? m[1].replace(/^["']|["']$/g, '') : '';
+        const body = m ? m[2] : rest;
+        return { name: 'as', speaker, rest: body };
+      }
+      return { name: c.name, rest };
+    }
   }
   return { name: 'say', rest: line };
 }
 
 function processInline(line, report) {
-  // 1) Roll20 style 링크를 placeholder로 치환
+  // 1) Roll20 style 링크를 placeholder 로 치환.
   const placeholders = [];
-  let work = line.replace(STYLE_LINK_RE, (_, text, decls) => {
+  let work = line.replace(STYLE_LINK_RE, (_, text, prefix, decls) => {
     const i = placeholders.length;
-    placeholders.push({ kind: 'styled', text, decls });
-    return ` R20_${i} `;
+    placeholders.push({ kind: 'styled', text, prefix, decls });
+    return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 2) 일반 링크
+  // 2) 일반 링크.
   work = work.replace(NORMAL_LINK_RE, (_, text, url) => {
     if (/^javascript:/i.test(url)) {
-      report.add('security', `[${text}](${url})`,
-        'javascript: 링크는 차단됩니다.');
+      report.add('security', `[${text}](${url})`, 'javascript: 링크는 차단됩니다.');
       return text;
     }
     const i = placeholders.length;
     placeholders.push({ kind: 'normal', text, url });
-    return ` R20_${i} `;
+    return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 3) 처리 안 된 [text](#... 패턴 = 특수문자 escape 깨졌을 가능성
-  const stray = work.match(/\[[^\] ]*\]\([^ ]*#/);
+  // 3) 처리 안 된 [text](...#...) 패턴 — 매크로 트릭이지만 닫힘이 깨진 경우.
+  const stray = work.match(/\[[^\]]*\]\([^)]*#[^)]*\)/);
   if (stray) {
     report.add('escape', stray[0],
       '매크로 패턴이 끝까지 닫히지 않은 것 같아요. 값 안의 ) ] " ? @ % 등은 ' +
       '&#41; &#93; &quot; &#63; &#64; &#37; 처럼 escape 해줘야 해요.');
   }
 
-  // 4) HTML escape 후 마크다운 처리
+  // 4) HTML escape 후 마크다운 처리.
   let html = escapeHtml(work);
   html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
   html = html.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
   html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
 
-  // 5) placeholder 복원
-  html = html.replace(/ R20_(\d+) /g, (_m, idx) => {
+  // 5) placeholder 복원.
+  const placeholderRe = new RegExp(
+    escapeRegex(PH_OPEN) + '(\\d+)' + escapeRegex(PH_CLOSE),
+    'g',
+  );
+  html = html.replace(placeholderRe, (_m, idx) => {
     const p = placeholders[+idx];
     if (p.kind === 'styled') return renderStyledLink(p, report);
-    return `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(decodeEntities(p.text))}</a>`;
+    return renderNormalLink(p);
   });
 
   return html;
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function renderStyledLink(p, report) {
@@ -692,9 +701,17 @@ function renderStyledLink(p, report) {
   }
   const text = decodeEntities(p.text);
   const styleStr = survived.join('; ');
-  // text 안의 마크다운(**굵게** 등)은 기본 채팅 단계에서 이미 처리됨.
-  // 여기 text는 placeholder에서 뺀 원본이라 다시 escape만.
-  return `<a class="r20-styled" href="#" onclick="return false" style="${escapeHtml(styleStr)}">${escapeHtml(text)}</a>`;
+  // prefix 가 진짜 외부 URL이면 클릭 가능하게, 매크로 명령이면 비활성.
+  const prefix = (p.prefix || '').trim();
+  const isExternal = /^https?:\/\//i.test(prefix);
+  const href = isExternal ? prefix : '#';
+  const onclick = isExternal ? '' : ' onclick="return false"';
+  const target = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+  return `<a class="r20-styled" href="${escapeHtml(href)}"${target}${onclick} style="${escapeHtml(styleStr)}">${escapeHtml(text)}</a>`;
+}
+
+function renderNormalLink(p) {
+  return `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(decodeEntities(p.text))}</a>`;
 }
 
 // ============================================================
@@ -703,9 +720,9 @@ function renderStyledLink(p, report) {
 
 function processMessage(line, report) {
   if (!line.trim()) return null;
-  const { name, rest } = detectCommand(line);
-  const html = processInline(rest, report);
-  return { type: name, html };
+  const cmd = detectCommand(line);
+  const html = processInline(cmd.rest, report);
+  return { type: cmd.name, html, speaker: cmd.speaker || '' };
 }
 
 function processInput(text) {
@@ -723,19 +740,19 @@ function processInput(text) {
 // ============================================================
 
 const state = {
-  sent: [],         // 전송된 메시지들
-  preview: [],      // 입력 중인 미리보기 메시지들
+  sent: [],
+  preview: [],
 };
 
-function buildMsgEl({ type, html, isPreview }) {
+function buildMsgEl({ type, html, speaker }) {
   const el = document.createElement('div');
   el.className = `chat-msg ${type}`;
-  if (isPreview) {
-    el.classList.add('preview');
-    const tag = document.createElement('span');
-    tag.className = 'preview-tag';
-    tag.textContent = '미리보기';
-    el.appendChild(tag);
+  if (type === 'as' && speaker) {
+    const by = document.createElement('span');
+    by.className = 'by';
+    by.textContent = speaker;
+    el.appendChild(by);
+    el.appendChild(document.createTextNode(' '));
   }
   const body = document.createElement('span');
   body.className = 'body';
@@ -747,10 +764,7 @@ function buildMsgEl({ type, html, isPreview }) {
 function renderChat() {
   const win = $('#chat-window');
   win.innerHTML = '';
-  const all = [
-    ...state.sent,
-    ...state.preview.map((m) => ({ ...m, isPreview: true })),
-  ];
+  const all = [...state.sent, ...state.preview];
   if (all.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
@@ -833,7 +847,7 @@ function renderCheatsheet() {
 // 8. 영속화
 // ============================================================
 
-const STORAGE_KEY = 'roll20-chat-preview-v2';
+const STORAGE_KEY = 'roll20-chat-preview-v3';
 
 function persist() {
   try {
@@ -868,6 +882,16 @@ const SAMPLES = [
     code: `/desc [── 그 일이 일어난 것은, 어느 비 오는 저녁이었다 ──](#" style="color:#666; text-decoration:none;)`,
   },
   {
+    title: '/as 다른 사람으로',
+    desc: '옅은 푸른색 박스',
+    code: `/as 시벨 안녕하세요, 처음 뵙겠습니다.`,
+  },
+  {
+    title: '/as + 스타일',
+    desc: '/as 도 [내용](#"…) 와 같이 쓸 수 있어요',
+    code: `/as NPC [의뢰가 있다](#" style="color:#1f4d7a; font-weight:bold;)`,
+  },
+  {
     title: '대사 박스',
     desc: '테두리 + 둥근 모서리 + 패딩',
     code: `[ "오늘은 비가 올 것 같군…" ](#" style="display:inline-block; background-color:#fff8ee; border:1px solid #d6c8a4; border-left:4px solid #b3242b; border-radius:6px; padding:6px 10px; color:#333; text-decoration:none;)`,
@@ -883,9 +907,9 @@ const SAMPLES = [
     code: `[CHAPTER I](#" style="font-size:18px; font-weight:bold; letter-spacing:0.2em; color:#b3242b; text-decoration:none;)`,
   },
   {
-    title: 'border-radius + 그림자',
-    desc: '카드 형태',
-    code: `[ 17 ](#" style="display:inline-block; padding:4px 14px; background-color:#b3242b; color:#fff; font-size:18px; font-weight:bold; border-radius:999px; box-shadow:1px 1px 3px rgba&#40;0,0,0,0.3&#41;; text-decoration:none;)`,
+    title: '선택지 매크로 버튼',
+    desc: 'URL 부분에 매크로를 넣어 클릭 시 실행',
+    code: `/desc [어떻게 할까?](#" style="text-decoration:none; font-weight:bold;)[ ▶ 손을 잡는다](!&#13;/desc 손을 잡았다. #" style="text-decoration:none; display:block; color:#fff; background:#0d0d0d; border-radius:20px; padding:5px 15px; text-align:left;)[ ▶ 거절한다](!&#13;/desc 거절했다. #" style="text-decoration:none; display:block; color:#fff; background:#5a0d0d; border-radius:20px; padding:5px 15px; text-align:left; margin-top:3px;)`,
   },
   {
     title: '⚠ calc() 차단 시연',
@@ -895,7 +919,7 @@ const SAMPLES = [
   {
     title: '⚠ 이스케이프 누락 시연',
     desc: ') 가 그대로일 때',
-    code: `[깨진 매크로](#" style="background:rgb(255,0,0); color:white;)`,
+    code: `[빨강](#" style="background:rgb(255,0,0);)`,
   },
 ];
 
