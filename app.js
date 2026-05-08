@@ -197,8 +197,9 @@ const NORMAL_LINK_RE =
 const IMAGE_URL_RE =
   /(https?:\/\/[^\s<>"'()]+\.(?:png|jpe?g|gif|webp|svg|bmp))(\?[^\s<>"'()]*)?/gi;
 
-// 백틱 인라인 코드 — 1개 또는 2개 (대칭).
-const BACKTICK_RE = /(`+)([\s\S]+?)\1/g;
+// 백틱 인라인 코드 — Roll20는 더블 백틱(``text``) 만 코드로 처리한다.
+// 단일 백틱은 일반 본문에서 흔히 쓰이므로 코드로 잡지 않는다.
+const BACKTICK_RE = /``([^`\n]+?)``/g;
 
 // Roll20 query: ?{prompt}, ?{prompt|default}, ?{prompt|opt1|opt2}.
 const QUERY_RE = /\?\{([^}]+)\}/g;
@@ -260,8 +261,8 @@ function processInline(line, report) {
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 4) 백틱 인라인 코드 → placeholder
-  work = work.replace(BACKTICK_RE, (_m, _ticks, code) => {
+  // 4) 백틱 인라인 코드(``text``) → placeholder
+  work = work.replace(BACKTICK_RE, (_m, code) => {
     const i = placeholders.length;
     placeholders.push({ kind: 'code', code });
     return `${PH_OPEN}${i}${PH_CLOSE}`;

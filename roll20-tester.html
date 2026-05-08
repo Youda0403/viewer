@@ -391,7 +391,7 @@ details[open] summary { border-bottom: 1px solid var(--pane-border); }
         </div>
         <p class="hint">
           줄마다 한 메시지로 처리해요. <code>/desc</code>, <code>/em</code>, <code>/me</code>, <code>/say</code>, <code>/as</code> 인식.
-          <code>?{질문}</code> 은 질문 텍스트로, 이미지 URL은 이미지로, <code>`코드`</code> 는 코랄색 인라인 코드로 표시돼요.
+          <code>?{질문}</code> 은 질문 텍스트로, 이미지 URL은 이미지로, <code>``코드``</code> 는 코랄색 인라인 코드로 표시돼요.
         </p>
       </div>
     </section>
@@ -619,8 +619,9 @@ const NORMAL_LINK_RE =
 const IMAGE_URL_RE =
   /(https?:\/\/[^\s<>"'()]+\.(?:png|jpe?g|gif|webp|svg|bmp))(\?[^\s<>"'()]*)?/gi;
 
-// 백틱 인라인 코드 — 1개 또는 2개 (대칭).
-const BACKTICK_RE = /(`+)([\s\S]+?)\1/g;
+// 백틱 인라인 코드 — Roll20는 더블 백틱(``text``) 만 코드로 처리한다.
+// 단일 백틱은 일반 본문에서 흔히 쓰이므로 코드로 잡지 않는다.
+const BACKTICK_RE = /``([^`\n]+?)``/g;
 
 // Roll20 query: ?{prompt}, ?{prompt|default}, ?{prompt|opt1|opt2}.
 const QUERY_RE = /\?\{([^}]+)\}/g;
@@ -682,8 +683,8 @@ function processInline(line, report) {
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 4) 백틱 인라인 코드 → placeholder
-  work = work.replace(BACKTICK_RE, (_m, _ticks, code) => {
+  // 4) 백틱 인라인 코드(``text``) → placeholder
+  work = work.replace(BACKTICK_RE, (_m, code) => {
     const i = placeholders.length;
     placeholders.push({ kind: 'code', code });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
