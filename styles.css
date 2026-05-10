@@ -2,18 +2,18 @@
   --bg: #fafafa;
   --pane-bg: #ffffff;
   --pane-border: #ececec;
-  --pane-head-bg: #fdf2f7;
+  --pane-head-bg: #f7eef2;
   --text: #2c2a26;
   --text-muted: #888888;
-  --accent: #ec5d8e;
-  --accent-dark: #d4427a;
-  --accent-soft: #fdf2f7;
+  --accent: #c389a0;
+  --accent-dark: #a06d83;
+  --accent-soft: #f7eef2;
   --warn: #b87d10;
   --danger: #b8311e;
   --ok: #2c7a3e;
   --chat-bg: #ffffff;
-  --code-bg: #fce4ec;
-  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(236,93,142,0.06);
+  --code-bg: #f7eaee;
+  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(195,137,160,0.08);
   --radius: 8px;
 }
 * { box-sizing: border-box; }
@@ -120,7 +120,7 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
 }
 #macro-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(236, 93, 142, 0.18);
+  box-shadow: 0 0 0 3px rgba(195, 137, 160, 0.20);
 }
 .actions {
   display: flex;

@@ -10,18 +10,18 @@
   --bg: #fafafa;
   --pane-bg: #ffffff;
   --pane-border: #ececec;
-  --pane-head-bg: #fdf2f7;
+  --pane-head-bg: #f7eef2;
   --text: #2c2a26;
   --text-muted: #888888;
-  --accent: #ec5d8e;
-  --accent-dark: #d4427a;
-  --accent-soft: #fdf2f7;
+  --accent: #c389a0;
+  --accent-dark: #a06d83;
+  --accent-soft: #f7eef2;
   --warn: #b87d10;
   --danger: #b8311e;
   --ok: #2c7a3e;
   --chat-bg: #ffffff;
-  --code-bg: #fce4ec;
-  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(236,93,142,0.06);
+  --code-bg: #f7eaee;
+  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(195,137,160,0.08);
   --radius: 8px;
 }
 * { box-sizing: border-box; }
@@ -128,7 +128,7 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
 }
 #macro-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(236, 93, 142, 0.18);
+  box-shadow: 0 0 0 3px rgba(195, 137, 160, 0.20);
 }
 .actions {
   display: flex;
@@ -344,37 +344,11 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
 // 1. 화이트리스트 / 차단 패턴
 // ============================================================
 
-const ALLOWED_PROPS = new Set([
-  'color', 'background', 'background-color', 'background-image',
-  'background-size', 'background-position', 'background-repeat',
-  'background-attachment', 'background-origin', 'background-clip',
-  'font', 'font-family', 'font-size', 'font-weight', 'font-style',
-  'font-variant', 'font-stretch',
-  'text-decoration', 'text-decoration-line', 'text-decoration-color',
-  'text-decoration-style', 'text-decoration-thickness',
-  'text-shadow', 'text-align', 'text-indent', 'text-transform',
-  'letter-spacing', 'word-spacing', 'line-height',
-  'word-break', 'word-wrap', 'overflow-wrap', 'white-space',
-  'direction',
-  'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-  'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-  'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-  'border-color', 'border-top-color', 'border-right-color',
-  'border-bottom-color', 'border-left-color',
-  'border-style', 'border-top-style', 'border-right-style',
-  'border-bottom-style', 'border-left-style',
-  'border-width', 'border-top-width', 'border-right-width',
-  'border-bottom-width', 'border-left-width',
-  'border-radius', 'border-top-left-radius', 'border-top-right-radius',
-  'border-bottom-left-radius', 'border-bottom-right-radius',
-  'border-collapse', 'border-spacing',
-  'box-shadow', 'box-sizing',
-  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-  'display', 'vertical-align', 'visibility', 'opacity',
-  'float', 'clear', 'overflow', 'overflow-x', 'overflow-y',
-  'list-style', 'list-style-type', 'list-style-position', 'list-style-image',
-]);
-
+// 사용자 매크로의 CSS는 기본적으로 모두 통과시킨다.
+// 실제로 안 먹는 속성이 있어도 브라우저가 알아서 무시하므로, 굳이 우리가
+// "이건 안 됨"이라고 미리 차단해서 false positive 를 만들 필요는 없다.
+// 단, Roll20가 명시적으로 sanitizer에서 막아둔 calc() 와 보안상 위험한
+// expression() / url(javascript:…) 만 strip + 경고한다.
 const BLOCKED_PATTERNS = {
   calc:       { re: /\bcalc\s*\(/i,
                 msg: 'Roll20는 calc() 수식을 막아놨어요. 고정값으로 바꿔주세요.' },
@@ -463,50 +437,33 @@ function pushDecl(arr, raw) {
   if (!trimmed) return;
   const idx = trimmed.indexOf(':');
   if (idx === -1) {
-    arr.push({ raw: trimmed, invalid: true });
+    // 영문/한글이 있는 경우만 진짜 syntax 오류로 본다.
+    // 줄 끝의 길 잃은 " ) ; 같은 건 조용히 무시.
+    if (/[a-zA-Z가-힯]/.test(trimmed)) {
+      arr.push({ raw: trimmed, invalid: true });
+    }
     return;
   }
   const prop = trimmed.slice(0, idx).trim().toLowerCase();
   const value = trimmed.slice(idx + 1).trim();
-  if (!prop || !value) {
-    arr.push({ raw: trimmed, invalid: true });
-    return;
-  }
+  if (!prop || !value) return;
   arr.push({ prop, value, raw: trimmed });
 }
 
 function validateDecl(decl, report) {
   if (decl.invalid) {
     report.add('syntax', decl.raw,
-      '"속성: 값" 형식이 아니에요. 콜론(:) 누락이거나 세미콜론(;) 위치가 잘못됐을 수 있어요.');
+      '"속성: 값" 형식이 아니에요. 콜론(:) 누락이거나 세미콜론(;) 위치를 확인하세요.');
     return null;
   }
   const { prop, value } = decl;
 
-  const opens = (value.match(/\(/g) || []).length;
-  const closes = (value.match(/\)/g) || []).length;
-  if (opens !== closes) {
-    report.add('escape', `${prop}: ${value}`,
-      '괄호 짝이 안 맞아요. 값 안의 ) 는 &#41; 로, ( 는 &#40; 로 이스케이프해주세요.');
-    return null;
-  }
-
+  // 명시적으로 차단되는 것들만 strip + 경고. 그 외는 모두 통과.
   for (const [key, { re, msg }] of Object.entries(BLOCKED_PATTERNS)) {
     if (re.test(value)) {
       report.add(key === 'calc' ? 'value' : 'security', `${prop}: ${value}`, msg);
       return null;
     }
-  }
-
-  if (!ALLOWED_PROPS.has(prop)) {
-    if (/^-(webkit|moz|ms|o)-/.test(prop)) {
-      report.add('prop', prop,
-        '벤더 프리픽스는 Roll20 채팅에서 동작이 보장되지 않아요.');
-    } else {
-      report.add('prop', prop,
-        `${prop} 은 두 블로그가 검증한 속성 목록에 없어요. Roll20에서 안 먹힐 수 있습니다.`);
-    }
-    return decl;
   }
   return decl;
 }
@@ -515,8 +472,10 @@ function validateDecl(decl, report) {
 // 5. Roll20 마크다운 파서
 // ============================================================
 
+// (#" 의 # 은 옵셔널 — 사용자 매크로에서 종종 빠진 채로 쓰여도
+// 동작하므로 우리도 받아준다.
 const STYLE_LINK_RE =
-  /\[([^\]]*)\]\(([^)]*?)#\s*"\s*style\s*=\s*"([^)]*)\)/g;
+  /\[([^\]]*)\]\(([^)]*?)#?\s*"\s*style\s*=\s*"([^)]*)\)/g;
 
 const NORMAL_LINK_RE =
   /\[([^\]]*)\]\(((?:https?:\/\/|mailto:|#)[^)\s]*)\)/g;
@@ -535,10 +494,12 @@ const QUERY_RE = /\?\{([^}]+)\}/g;
 function substituteQueries(text) {
   return text.replace(QUERY_RE, (_m, inner) => {
     const parts = inner.split('|');
-    if (parts.length === 1) return parts[0].trim();
-    // |default 형태면 default 표시, 옵션 dropdown(opt,val)면 첫 옵션의 라벨.
-    const second = parts[1];
-    return second.split(',')[0].trim();
+    const prompt = parts[0].trim();
+    if (parts.length === 1) return prompt;
+    // |default 형태에서 default 가 비어있으면 ?{프롬프트|} 인 셈이라
+    // prompt 텍스트로 fallback. 옵션 dropdown(opt,val) 은 첫 옵션의 라벨.
+    const def = parts[1].split(',')[0].trim();
+    return def || prompt;
   });
 }
 
@@ -606,10 +567,7 @@ function processInline(line, report) {
 
   // 6) HTML escape + 마크다운 처리
   let html = escapeHtml(work);
-  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
-  html = html.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
-  html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+  html = applyMarkdown(html);
 
   // 7) placeholder 복원
   const placeholderRe = new RegExp(
@@ -630,6 +588,14 @@ function processInline(line, report) {
   return html;
 }
 
+function applyMarkdown(html) {
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  html = html.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+  html = html.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+  return html;
+}
+
 function renderStyledLink(p, report) {
   const decoded = decodeEntities(p.decls);
   const decls = parseDecls(decoded);
@@ -638,14 +604,16 @@ function renderStyledLink(p, report) {
     const ok = validateDecl(d, report);
     if (ok) survived.push(`${ok.prop}: ${ok.value}`);
   }
+  // 링크 텍스트 안에서도 **굵게**, *기울임*, ~~취소~~ 마크다운 처리.
   const text = decodeEntities(p.text);
+  const escapedText = applyMarkdown(escapeHtml(text));
   const styleStr = survived.join('; ');
   const prefix = (p.prefix || '').trim();
   const isExternal = /^https?:\/\//i.test(prefix);
   const href = isExternal ? prefix : '#';
   const onclick = isExternal ? '' : ' onclick="return false"';
   const target = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-  return `<a class="r20-styled" href="${escapeHtml(href)}"${target}${onclick} style="${escapeHtml(styleStr)}">${escapeHtml(text)}</a>`;
+  return `<a class="r20-styled" href="${escapeHtml(href)}"${target}${onclick} style="${escapeHtml(styleStr)}">${escapedText}</a>`;
 }
 
 function renderNormalLink(p) {
