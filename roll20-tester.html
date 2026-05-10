@@ -589,6 +589,9 @@ function processInline(line, report) {
 }
 
 function applyMarkdown(html) {
+  // 사용자가 매크로 안에서 줄바꿈으로 자주 쓰는 <br>. HTML escape 단계에서
+  // &lt;br&gt; 으로 변했을 수 있으니 다시 진짜 <br> 로 복원.
+  html = html.replace(/&lt;br\s*\/?\s*&gt;/gi, '<br>');
   html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
   html = html.replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
