@@ -55,9 +55,6 @@ const BLOCKED_PATTERNS = {
 
 const COMMANDS = [
   { name: 'desc', re: /^\/desc\s+/i },
-  { name: 'em',   re: /^\/em\s+/i },
-  { name: 'em',   re: /^\/me\s+/i },
-  { name: 'say',  re: /^\/say\s+/i },
   { name: 'as',   re: /^\/as\s+/i },
 ];
 
