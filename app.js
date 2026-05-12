@@ -114,9 +114,32 @@ function pushDecl(arr, raw) {
     return;
   }
   const prop = trimmed.slice(0, idx).trim().toLowerCase();
-  const value = trimmed.slice(idx + 1).trim();
+  let value = trimmed.slice(idx + 1).trim();
   if (!prop || !value) return;
+  // 매크로 끝의 ;) 패턴: 마크다운 링크의 닫는 ) 가 linear-gradient(...) 의
+  // 닫는 ) 로 못 쓰이면서, ; 만 함수 안에 갇혀버리는 경우가 흔하다. CSS 파서는
+  // EOF 에서 닫히지 않은 ( 는 자동 보강해주지만, 함수 안에 ; 토큰이 끼면
+  // 인자 파싱이 깨져서 속성 자체가 drop 된다. 그 trailing ; 만 떼어내면
+  // 브라우저가 함수를 알아서 닫아준다 (Roll20 도 같은 결과로 렌더링됨).
+  if (hasUnclosedParen(value)) {
+    value = value.replace(/;\s*$/, '').trimEnd();
+  }
   arr.push({ prop, value, raw: trimmed });
+}
+
+function hasUnclosedParen(s) {
+  let depth = 0, inStr = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (ch === inStr && s[i - 1] !== '\\') inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { inStr = ch; continue; }
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+  }
+  return depth > 0;
 }
 
 function validateDecl(decl, report) {
@@ -126,19 +149,6 @@ function validateDecl(decl, report) {
     return null;
   }
   const { prop, value } = decl;
-
-  // 닫는 괄호가 빠진 함수형 값 (linear-gradient, rgb 등) 잡아내기.
-  // 흔한 실수: 매크로 끝에 ;) 하나만 써서 함수 ) 와 마크다운 링크 ) 를 동시에
-  // 닫으려 한 경우 — 마크다운 파서가 먼저 ) 를 가져가 버려서 함수가 안 닫힌다.
-  const opens  = (value.match(/\(/g) || []).length;
-  const closes = (value.match(/\)/g) || []).length;
-  if (opens > closes) {
-    report.add('syntax', `${prop}: ${value}`,
-      '함수형 값의 닫는 괄호 ) 가 부족해요. 매크로 끝의 ;) 는 마크다운 링크의 ' +
-      '닫는 괄호로 먼저 잡혀서 linear-gradient() 같은 함수를 닫지 못해요. ' +
-      '함수마다 ) 를 따로 적고, 매크로 전체는 ) 로 닫아주세요 (예: …#AA0000));).');
-    return null;
-  }
 
   // content 속성은 ::before/::after 의사요소에서만 동작한다. Roll20 매크로의
   // 인라인 style 속성은 실제 요소(<a>)에 붙기 때문에 절대 적용 안 됨.

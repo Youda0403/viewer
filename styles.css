@@ -180,6 +180,7 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
  * 다음 메시지의 텍스트 위로 묻히지 않게 한다 (Roll20 의 채팅창 간격과
  * 비슷하게). */
 .chat-msg {
+  position: relative; /* 매크로 안의 position:absolute 자식이 여기 기준으로 떠야 함 */
   padding: 6px 2px 14px;
   margin: 0;
   word-wrap: break-word;
