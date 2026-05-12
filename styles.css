@@ -187,6 +187,15 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
   overflow-wrap: break-word;
 }
 
+/* Roll20 의 채팅 a 태그는 브라우저 기본값(content-box, line-height: normal) 위에서
+ * 그려진다. 우리 도구의 글로벌 `* { box-sizing: border-box }` 와 .chat-window 의
+ * line-height: 1.55 가 사용자 매크로의 정밀 좌표(절대위치 + 음수 margin) 를
+ * 어긋나게 만들기 때문에, 채팅 메시지 안쪽만 Roll20 기본값으로 되돌린다. */
+.chat-msg, .chat-msg * {
+  box-sizing: content-box;
+  line-height: normal;
+}
+
 .chat-msg .by {
   font-weight: 700;
   color: #1f1d1a;
