@@ -127,6 +127,28 @@ function validateDecl(decl, report) {
   }
   const { prop, value } = decl;
 
+  // 닫는 괄호가 빠진 함수형 값 (linear-gradient, rgb 등) 잡아내기.
+  // 흔한 실수: 매크로 끝에 ;) 하나만 써서 함수 ) 와 마크다운 링크 ) 를 동시에
+  // 닫으려 한 경우 — 마크다운 파서가 먼저 ) 를 가져가 버려서 함수가 안 닫힌다.
+  const opens  = (value.match(/\(/g) || []).length;
+  const closes = (value.match(/\)/g) || []).length;
+  if (opens > closes) {
+    report.add('syntax', `${prop}: ${value}`,
+      '함수형 값의 닫는 괄호 ) 가 부족해요. 매크로 끝의 ;) 는 마크다운 링크의 ' +
+      '닫는 괄호로 먼저 잡혀서 linear-gradient() 같은 함수를 닫지 못해요. ' +
+      '함수마다 ) 를 따로 적고, 매크로 전체는 ) 로 닫아주세요 (예: …#AA0000));).');
+    return null;
+  }
+
+  // content 속성은 ::before/::after 의사요소에서만 동작한다. Roll20 매크로의
+  // 인라인 style 속성은 실제 요소(<a>)에 붙기 때문에 절대 적용 안 됨.
+  if (prop === 'content') {
+    report.add('prop', `${prop}: ${value}`,
+      'content 속성은 ::before/::after 의사요소에서만 동작해요. ' +
+      'Roll20 매크로의 inline style 은 실제 <a> 에 붙어서 무시됩니다.');
+    return null;
+  }
+
   // 명시적으로 차단되는 것들만 strip + 경고. 그 외는 모두 통과.
   for (const [key, { re, msg }] of Object.entries(BLOCKED_PATTERNS)) {
     if (re.test(value)) {
