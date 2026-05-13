@@ -441,6 +441,7 @@ function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       input: $('#macro-input').value,
+      darkChat: $('#chat-window').classList.contains('dark'),
     }));
   } catch (_) { /* 무시 */ }
 }
@@ -449,6 +450,7 @@ function restore() {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!data) return;
     if (data.input) $('#macro-input').value = data.input;
+    if (data.darkChat) $('#chat-window').classList.add('dark');
   } catch (_) { /* 무시 */ }
 }
 
@@ -506,6 +508,10 @@ function setup() {
   $('#clear-input-btn').addEventListener('click', () => {
     $('#macro-input').value = '';
     update();
+  });
+  $('#chat-bg-toggle').addEventListener('click', () => {
+    $('#chat-window').classList.toggle('dark');
+    persist();
   });
 
   update();

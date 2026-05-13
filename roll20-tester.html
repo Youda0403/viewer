@@ -181,6 +181,24 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
   font-size: 13px;
 }
 
+/* 어두운 배경 토글 — 네온/다크테마 매크로 미리보기용 */
+.bg-toggle {
+  background: transparent;
+  border: 1px solid var(--pane-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.bg-toggle:hover { background: var(--accent-soft); border-color: var(--accent); }
+.chat-window.dark {
+  background: #1f1f1f;
+  color: #e0e0e0;
+}
+.chat-window.dark .chat-empty { color: #777; }
+
 /* Roll20 채팅 메시지 박스
  *
  * background 를 깔지 않아 사용자 매크로의 box-shadow spread 가 양옆/아래
@@ -323,7 +341,11 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
     </section>
 
     <section class="pane pane-chat">
-      <div class="pane-head"><h2>채팅 미리보기</h2></div>
+      <div class="pane-head">
+        <h2>채팅 미리보기</h2>
+        <button type="button" id="chat-bg-toggle" class="bg-toggle"
+                title="채팅 배경 색 바꾸기 (밝음/어두움)">🌗</button>
+      </div>
       <div class="chat-window" id="chat-window">
         <div class="chat-empty" id="chat-empty">왼쪽에 매크로를 입력하면 여기에 미리보기가 떠요.</div>
       </div>
@@ -784,6 +806,7 @@ function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       input: $('#macro-input').value,
+      darkChat: $('#chat-window').classList.contains('dark'),
     }));
   } catch (_) { /* 무시 */ }
 }
@@ -792,6 +815,7 @@ function restore() {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!data) return;
     if (data.input) $('#macro-input').value = data.input;
+    if (data.darkChat) $('#chat-window').classList.add('dark');
   } catch (_) { /* 무시 */ }
 }
 
@@ -849,6 +873,10 @@ function setup() {
   $('#clear-input-btn').addEventListener('click', () => {
     $('#macro-input').value = '';
     update();
+  });
+  $('#chat-bg-toggle').addEventListener('click', () => {
+    $('#chat-window').classList.toggle('dark');
+    persist();
   });
 
   update();
