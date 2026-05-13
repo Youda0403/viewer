@@ -38,6 +38,20 @@ const COMMANDS = [
 
 const $ = (sel) => document.querySelector(sel);
 
+// iOS/macOS 의 "Smart Quotes" 가 textarea 붙여넣기에서 ASCII " 를 “ ” 로
+// 바꿔버리면 Roll20 의 style="..." 파서가 매크로를 못 잡는다. 보이지 않는
+// 변환이라 사용자가 알아채기 어렵다 — 입력/붙여넣기 단계에서 ASCII 로
+// 강제로 되돌린다. NBSP( ) 도 종종 끼어들어서 같이 처리.
+const SMART_CHARS_RE = /[“”„‟‘’‚‛ ]/g;
+const SMART_MAP = {
+  '“': '"', '”': '"', '„': '"', '‟': '"',
+  '‘': "'", '’': "'", '‚': "'", '‛': "'",
+  ' ': ' ',
+};
+function normalizeQuotes(s) {
+  return String(s).replace(SMART_CHARS_RE, (c) => SMART_MAP[c] || c);
+}
+
 const _entityHelper = document.createElement('textarea');
 function decodeEntities(s) {
   _entityHelper.innerHTML = String(s);
@@ -449,7 +463,7 @@ function restore() {
   try {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!data) return;
-    if (data.input) $('#macro-input').value = data.input;
+    if (data.input) $('#macro-input').value = normalizeQuotes(data.input);
     if (data.darkChat) $('#chat-window').classList.add('dark');
   } catch (_) { /* 무시 */ }
 }
@@ -475,7 +489,9 @@ function update() {
 }
 
 async function copyMacro() {
-  const text = $('#macro-input').value;
+  const el = $('#macro-input');
+  const text = normalizeQuotes(el.value);
+  if (text !== el.value) el.value = text; // 화면에도 깨끗한 버전 반영
   if (!text) return;
   const btn = $('#copy-btn');
   const original = btn.textContent;
@@ -502,7 +518,19 @@ function setup() {
   restore();
 
   const debounced = debounce(update, 120);
-  $('#macro-input').addEventListener('input', debounced);
+  const input = $('#macro-input');
+  input.addEventListener('input', () => {
+    // OS 가 끼워넣은 스마트따옴표/NBSP 를 즉시 ASCII 로 되돌린다.
+    // 1:1 치환이라 글자 길이는 그대로, 커서 위치만 유지하면 됨.
+    const orig = input.value;
+    const norm = normalizeQuotes(orig);
+    if (orig !== norm) {
+      const pos = input.selectionStart;
+      input.value = norm;
+      input.setSelectionRange(pos, pos);
+    }
+    debounced();
+  });
 
   $('#copy-btn').addEventListener('click', copyMacro);
   $('#clear-input-btn').addEventListener('click', () => {
