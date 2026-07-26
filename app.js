@@ -231,6 +231,81 @@ const BACKTICK_RE = /``([^`\n]+?)``/g;
 // 을 입혀서 그리기 때문에 우리도 똑같이 취급해야 한다. (#" 트릭은 해당 없음)
 const COMMAND_PREFIX_RE = /^[!~/]/;
 
+// 인라인 흐름에서 빠지는 요소 / 줄을 끊는 요소.
+const OUT_OF_FLOW_RE = /^(absolute|fixed)$/;
+const BLOCK_DISPLAY_RE = /^(block|flex|grid|table|list-item|flow-root)$/;
+
+function styleFlags(decls) {
+  let outOfFlow = false, blockLevel = false;
+  for (const { prop, value } of decls) {
+    const v = value.trim().toLowerCase();
+    if (prop === 'position' && OUT_OF_FLOW_RE.test(v)) outOfFlow = true;
+    if (prop === 'display' && BLOCK_DISPLAY_RE.test(v)) blockLevel = true;
+  }
+  return { outOfFlow, blockLevel };
+}
+
+/**
+ * position:absolute 요소 주변의 공백을 직접 접는다.
+ *
+ * 겹치기 매크로(하트 편지봉투처럼 <a> 몇 개를 음수 margin 으로 포개는 것)는
+ * absolute 요소의 "static position" 을 기준으로 좌표를 잡는다. 그 기준점은
+ * 앞선 인라인 내용의 폭에 달려 있는데, absolute 요소는 줄에 폭을 기여하지
+ * 않으므로 그 주변 공백은 서로 이웃하게 되어 접혀야 한다 — 데스크톱 Chrome
+ * 은 접어서 폭 0 으로 만들지만, 일부 모바일 엔진은 공백을 그대로 남긴다.
+ * 남으면 뒤따르는 겹치기 요소가 공백 폭만큼 누적으로 밀려서(뚜껑 +3.6px,
+ * 그 다음 +7.3px, 하트 +13.2px …) 매크로가 어긋나 보인다.
+ *
+ * 엔진의 공백 처리에 기대지 않고, 애초에 DOM 에 공백 문자를 남기지 않는다.
+ * 단, 접은 결과로 양옆의 "흐름에 남은" 내용이 붙어버리면 안 되므로 그때는
+ * 공백 하나를 되돌려 놓는다 (줄 시작/끝이나 블록 요소와 맞닿는 경우는 제외 —
+ * 그 공백은 어차피 사라지는 자리다).
+ */
+function collapseOutOfFlowGaps(work, placeholders) {
+  const tokenRe = new RegExp(
+    escapeRegex(PH_OPEN) + '(\\d+)' + escapeRegex(PH_CLOSE), 'g',
+  );
+  const items = [];
+  let last = 0, m;
+  while ((m = tokenRe.exec(work)) !== null) {
+    if (m.index > last) items.push({ s: work.slice(last, m.index) });
+    items.push({ s: m[0], p: placeholders[+m[1]] });
+    last = m.index + m[0].length;
+  }
+  if (last < work.length) items.push({ s: work.slice(last) });
+
+  const isOof = (it) => !!(it && it.p && it.p.outOfFlow);
+  if (!items.some(isOof)) return work;
+
+  const isWs = (it) => !!it && !it.p && /^\s+$/.test(it.s);
+  // 줄 시작/끝, 또는 줄을 끊는 블록 요소 — 옆 공백이 어차피 없어지는 자리.
+  const isEdge = (it) => !it || !!(it.p && it.p.blockLevel);
+
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    if (!isWs(items[i]) && !isOof(items[i])) { out.push(items[i]); continue; }
+
+    // out-of-flow 요소와 공백으로만 이뤄진 최대 구간을 잡는다.
+    let j = i, hasOof = false, hasWs = false;
+    for (; j < items.length && (isWs(items[j]) || isOof(items[j])); j++) {
+      if (isWs(items[j])) hasWs = true; else hasOof = true;
+    }
+    if (!hasOof) {                       // 그냥 공백뿐이면 손대지 않는다
+      for (let k = i; k < j; k++) out.push(items[k]);
+    } else {
+      // 공백 시퀀스에서 살아남는 건 "첫 번째" 하나다 (브라우저와 동일).
+      // 그러니 되돌릴 공백은 out-of-flow 토큰들 앞에 놓는다 — 그래야
+      // absolute 요소의 static position 도 브라우저와 같은 자리에 온다.
+      if (hasWs && !isEdge(out[out.length - 1]) && !isEdge(items[j])) {
+        out.push({ s: ' ' });
+      }
+      for (let k = i; k < j; k++) if (isOof(items[k])) out.push(items[k]);
+    }
+    i = j - 1;
+  }
+  return out.map((it) => it.s).join('');
+}
+
 function detectCommand(line) {
   for (const c of COMMANDS) {
     if (c.re.test(line)) {
@@ -253,17 +328,20 @@ function processInline(line) {
   let work = substituteQueries(line);
 
   // 1) Roll20 styled link → placeholder
+  //    CSS 는 여기서 미리 파싱한다 — 아래 공백 접기가 position/display 를
+  //    알아야 하기 때문.
   const placeholders = [];
-  work = work.replace(STYLE_LINK_RE, (_, text, prefix, decls) => {
+  work = work.replace(STYLE_LINK_RE, (_, text, prefix, declText) => {
+    const decls = parseDecls(decodeEntities(declText)).filter(keepDecl);
     const i = placeholders.length;
-    placeholders.push({ kind: 'styled', text, prefix, decls });
+    placeholders.push({ kind: 'styled', text, prefix, decls, ...styleFlags(decls) });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
   // 2) 스타일 없는 명령 버튼 → placeholder (Roll20 기본 버튼 모양)
   work = work.replace(COMMAND_LINK_RE, (_m, text, prefix) => {
     const i = placeholders.length;
-    placeholders.push({ kind: 'styled', text, prefix, decls: '' });
+    placeholders.push({ kind: 'styled', text, prefix, decls: [] });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
@@ -290,11 +368,14 @@ function processInline(line) {
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 6) HTML escape + 마크다운 처리
+  // 6) 겹치기 매크로 좌표가 엔진별 공백 처리에 흔들리지 않게 직접 접는다.
+  work = collapseOutOfFlowGaps(work, placeholders);
+
+  // 7) HTML escape + 마크다운 처리
   let html = escapeHtml(work);
   html = applyMarkdown(html);
 
-  // 7) placeholder 복원
+  // 8) placeholder 복원
   const placeholderRe = new RegExp(
     escapeRegex(PH_OPEN) + '(\\d+)' + escapeRegex(PH_CLOSE),
     'g',
@@ -325,8 +406,7 @@ function applyMarkdown(html) {
 }
 
 function renderStyledLink(p) {
-  const decls = parseDecls(decodeEntities(p.decls)).filter(keepDecl);
-  const styleStr = decls.map((d) => `${d.prop}: ${d.value}`).join('; ');
+  const styleStr = p.decls.map((d) => `${d.prop}: ${d.value}`).join('; ');
 
   // 링크 텍스트 안에서도 **굵게**, *기울임*, ~~취소~~ 마크다운 처리.
   const escapedText = applyMarkdown(escapeHtml(decodeEntities(p.text)));
