@@ -8,9 +8,6 @@
   --accent: #c389a0;
   --accent-dark: #a06d83;
   --accent-soft: #f7eef2;
-  --warn: #b87d10;
-  --danger: #b8311e;
-  --ok: #2c7a3e;
   /* 채팅창은 살짝 회색끼 도는 톤 — 사용자 매크로의 background:#ffffff 가
    * 채팅창 안에서 흰 박스로 보이도록. 완전 흰색이면 흰 말풍선이 안 보임. */
   --chat-bg: #ededed;
@@ -54,19 +51,15 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
 }
 .topbar code { background: var(--accent-soft); color: var(--accent-dark); }
 
-/* 레이아웃: 입력 / 채팅 / 경고 */
+/* 레이아웃: 입력 / 채팅 */
 .layout {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) 1fr minmax(260px, 340px);
+  grid-template-columns: minmax(300px, 420px) 1fr;
   gap: 12px;
   padding: 12px;
-  max-width: 1400px;
+  max-width: 1240px;
   margin: 0 auto;
   align-items: start;
-}
-@media (max-width: 1024px) {
-  .layout { grid-template-columns: 1fr 1fr; }
-  .pane-warnings { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
   .layout { grid-template-columns: 1fr; padding: 8px; gap: 8px; }
@@ -90,21 +83,6 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
 .pane-head h2 { font-size: 14px; color: var(--accent-dark); }
 .pane-body { padding: 14px; }
 
-.badge {
-  display: inline-block;
-  min-width: 22px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--text-muted);
-  color: #fff;
-  font-size: 12px;
-  text-align: center;
-  line-height: 1.4;
-}
-.badge[data-level="ok"]     { background: var(--ok); }
-.badge[data-level="warn"]   { background: var(--warn); }
-.badge[data-level="danger"] { background: var(--danger); }
-
 /* 입력 */
 #macro-input {
   width: 100%;
@@ -124,6 +102,61 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(195, 137, 160, 0.20);
 }
+/* ?{…} 선택지 / 자유 입력 패널 */
+.query-panel {
+  margin-top: 10px;
+  border: 1px solid var(--pane-border);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+.query-panel[hidden] { display: none; }
+.query-panel-head {
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  border-bottom: 1px solid var(--pane-border);
+}
+.query-panel-note {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.query-panel-note code { background: #fff; font-size: 11px; }
+.query-list { padding: 8px 10px; background: #fff; }
+.query-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.query-label {
+  flex: 0 0 auto;
+  max-width: 45%;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.query-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 12.5px;
+  border: 1px solid var(--pane-border);
+  border-radius: 5px;
+  background: #fff;
+  outline: none;
+}
+.query-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(195, 137, 160, 0.18);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -249,6 +282,27 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
 }
 .chat-msg .r20-styled:hover { text-decoration: underline; }
 
+/* Roll20 명령 버튼: [라벨](!명령 …) / (~매크로 …) / (/명령 …)
+ *
+ * Roll20 는 이 링크들을 "채팅 버튼"으로 그린다 — 즉 inline-block 에 안쪽
+ * 여백이 붙은 상태가 기본값이고, 매크로 작성자들은 그 위에 background /
+ * border 만 덮어쓴다. 이 기본값이 없으면
+ *   - <a> 가 inline 이라 width/height 가 통째로 무시되고 (버튼 몸통 실종)
+ *   - 옆에 position:absolute + 음수 margin 으로 겹쳐 놓는 도형들의
+ *     기준 위치가 버튼 폭만큼 밀려서 전부 어긋난다.
+ * 하트 편지봉투처럼 여러 <a> 를 겹쳐 만드는 매크로가 깨져 보이던 원인.
+ * 인라인 style 이 항상 이겨서 사용자 매크로 쪽 지정은 그대로 살아난다. */
+.chat-msg .r20-button {
+  display: inline-block;
+  padding: 5px;
+  border: 1px solid #c0c0c0;
+  border-radius: 3px;
+  background-color: #ededed;
+  color: #000000;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
 .chat-msg img { max-width: 100%; height: auto; }
 .chat-msg img.r20-image {
   max-width: 100%;
@@ -268,41 +322,3 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-si
   font-size: 0.92em;
 }
 
-/* 경고 패널 */
-.warnings-body { padding: 0; }
-.warnings-body .empty {
-  padding: 14px; color: var(--text-muted); margin: 0; font-size: 13px;
-}
-.warn-summary {
-  padding: 10px 14px;
-  background: var(--accent-soft);
-  border-bottom: 1px solid var(--pane-border);
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.warn-summary strong { color: var(--text); }
-.warn-item {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--pane-border);
-  font-size: 13px;
-}
-.warn-item:last-child { border-bottom: none; }
-.warn-item .label {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 700;
-  margin-right: 6px;
-  vertical-align: 1px;
-}
-.warn-item .label[data-kind="prop"]     { background: #ffd7d2; color: #882015; }
-.warn-item .label[data-kind="value"]    { background: #fff0c0; color: #7a5500; }
-.warn-item .label[data-kind="syntax"]   { background: #ffe4b3; color: #7a4b00; }
-.warn-item .label[data-kind="escape"]   { background: #d6eaff; color: #1c4f8a; }
-.warn-item .label[data-kind="security"] { background: #ffd0d0; color: #8a0a0a; }
-.warn-item code { font-size: 12px; }
-.warn-item .reason {
-  display: block; margin-top: 4px;
-  color: var(--text-muted); font-size: 12px;
-}

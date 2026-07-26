@@ -20,13 +20,21 @@
         <textarea id="macro-input" rows="14" spellcheck="false"
           autocorrect="off" autocapitalize="off" autocomplete="off"
           placeholder='/desc [비가 내리고 있다.](#" style="color:#666; font-style:italic;)'></textarea>
+        <div class="query-panel" id="query-panel" hidden>
+          <div class="query-panel-head">
+            선택지 · 입력값
+            <span class="query-panel-note">Roll20가 물어보는 <code>?{…}</code> 값이에요. 고르면 미리보기에 바로 반영돼요.</span>
+          </div>
+          <div class="query-list" id="query-list"></div>
+        </div>
         <div class="actions">
           <button type="button" id="copy-btn" class="primary">코드 복사</button>
           <button type="button" id="clear-input-btn">입력 지우기</button>
         </div>
         <p class="hint">
           줄마다 한 메시지로 처리해요. <code>/desc</code>, <code>/as</code> 인식.
-          <code>?{질문}</code> 은 질문 텍스트로, 이미지 URL은 이미지로, <code>``코드``</code> 는 코랄색 인라인 코드로 표시돼요.
+          <code>?{질문|선택1,값1|…}</code> 은 위 선택지 칸에서 고를 수 있고,
+          이미지 URL은 이미지로, <code>``코드``</code> 는 코랄색 인라인 코드로 표시돼요.
           붙여넣을 때 끼어드는 <code>“ ”</code> 스마트따옴표는 자동으로 <code>"</code> 로 정리돼요.
         </p>
       </div>
@@ -42,16 +50,6 @@
         <div class="chat-empty" id="chat-empty">왼쪽에 매크로를 입력하면 여기에 미리보기가 떠요.</div>
       </div>
     </section>
-
-    <aside class="pane pane-warnings">
-      <div class="pane-head">
-        <h2>필터 결과</h2>
-        <span class="badge" id="warn-badge">0</span>
-      </div>
-      <div class="pane-body warnings-body" id="warnings-body">
-        <p class="empty">아직 검사할 매크로가 없어요.</p>
-      </div>
-    </aside>
   </main>
 
   <script src="app.js"></script>

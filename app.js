@@ -10,22 +10,19 @@
 'use strict';
 
 // ============================================================
-// 1. 화이트리스트 / 차단 패턴
+// 1. 차단 패턴
 // ============================================================
 
 // 사용자 매크로의 CSS는 기본적으로 모두 통과시킨다.
 // 실제로 안 먹는 속성이 있어도 브라우저가 알아서 무시하므로, 굳이 우리가
 // "이건 안 됨"이라고 미리 차단해서 false positive 를 만들 필요는 없다.
 // 단, Roll20가 명시적으로 sanitizer에서 막아둔 calc() 와 보안상 위험한
-// expression() / url(javascript:…) 만 strip + 경고한다.
-const BLOCKED_PATTERNS = {
-  calc:       { re: /\bcalc\s*\(/i,
-                msg: 'Roll20는 calc() 수식을 막아놨어요. 고정값으로 바꿔주세요.' },
-  expression: { re: /\bexpression\s*\(/i,
-                msg: 'CSS expression() 은 차단됩니다.' },
-  jsurl:      { re: /url\s*\(\s*['"]?\s*javascript:/i,
-                msg: 'url(javascript:…) 는 차단됩니다.' },
-};
+// expression() / url(javascript:…) 만 조용히 걷어낸다.
+const BLOCKED_VALUE_RE = [
+  /\bcalc\s*\(/i,                    // Roll20 sanitizer 가 막는 수식
+  /\bexpression\s*\(/i,              // 구형 IE CSS 표현식
+  /url\s*\(\s*['"]?\s*javascript:/i, // js URL
+];
 
 const COMMANDS = [
   { name: 'desc', re: /^\/desc\s+/i },
@@ -41,12 +38,12 @@ const $ = (sel) => document.querySelector(sel);
 // iOS/macOS 의 "Smart Quotes" 가 textarea 붙여넣기에서 ASCII " 를 “ ” 로
 // 바꿔버리면 Roll20 의 style="..." 파서가 매크로를 못 잡는다. 보이지 않는
 // 변환이라 사용자가 알아채기 어렵다 — 입력/붙여넣기 단계에서 ASCII 로
-// 강제로 되돌린다. NBSP( ) 도 종종 끼어들어서 같이 처리.
-const SMART_CHARS_RE = /[“”„‟‘’‚‛ ]/g;
+// 강제로 되돌린다. NBSP( ) 도 종종 끼어들어서 같이 처리.
+const SMART_CHARS_RE = /[“”„‟‘’‚‛ ]/g;
 const SMART_MAP = {
   '“': '"', '”': '"', '„': '"', '‟': '"',
   '‘': "'", '’': "'", '‚': "'", '‛': "'",
-  ' ': ' ',
+  ' ': ' ',
 };
 function normalizeQuotes(s) {
   return String(s).replace(SMART_CHARS_RE, (c) => SMART_MAP[c] || c);
@@ -74,25 +71,12 @@ const debounce = (fn, ms) => {
 const PH_OPEN = '\x01R20\x01';
 const PH_CLOSE = '\x01';
 
-// ============================================================
-// 3. SanitizeReport
-// ============================================================
-
-class SanitizeReport {
-  constructor() { this.entries = []; this.counts = {}; }
-  add(kind, name, reason) {
-    this.entries.push({ kind, name, reason });
-    this.counts[kind] = (this.counts[kind] || 0) + 1;
-  }
-  total() { return this.entries.length; }
-}
-const KIND_LABEL = {
-  prop: '속성', value: '값', syntax: '문법',
-  escape: '이스케이프', security: '보안',
-};
+// 전역 상태. 쿼리 응답은 "?{…}" 원문을 키로 저장한다 — 매크로를 고치면
+// 키가 달라지므로 예전 답이 엉뚱하게 재사용될 일이 없다.
+const state = { messages: [], answers: {}, queryKeys: '' };
 
 // ============================================================
-// 4. CSS 파서
+// 3. CSS 파서
 // ============================================================
 
 function parseDecls(text) {
@@ -119,14 +103,7 @@ function pushDecl(arr, raw) {
   const trimmed = raw.trim();
   if (!trimmed) return;
   const idx = trimmed.indexOf(':');
-  if (idx === -1) {
-    // 영문/한글이 있는 경우만 진짜 syntax 오류로 본다.
-    // 줄 끝의 길 잃은 " ) ; 같은 건 조용히 무시.
-    if (/[a-zA-Z가-힯]/.test(trimmed)) {
-      arr.push({ raw: trimmed, invalid: true });
-    }
-    return;
-  }
+  if (idx === -1) return;
   const prop = trimmed.slice(0, idx).trim().toLowerCase();
   let value = trimmed.slice(idx + 1).trim();
   if (!prop || !value) return;
@@ -138,7 +115,7 @@ function pushDecl(arr, raw) {
   if (hasUnclosedParen(value)) {
     value = value.replace(/;\s*$/, '').trimEnd();
   }
-  arr.push({ prop, value, raw: trimmed });
+  arr.push({ prop, value });
 }
 
 function hasUnclosedParen(s) {
@@ -156,31 +133,73 @@ function hasUnclosedParen(s) {
   return depth > 0;
 }
 
-function validateDecl(decl, report) {
-  if (decl.invalid) {
-    report.add('syntax', decl.raw,
-      '"속성: 값" 형식이 아니에요. 콜론(:) 누락이거나 세미콜론(;) 위치를 확인하세요.');
-    return null;
-  }
-  const { prop, value } = decl;
-
+function keepDecl({ prop, value }) {
   // content 속성은 ::before/::after 의사요소에서만 동작한다. Roll20 매크로의
   // 인라인 style 속성은 실제 요소(<a>)에 붙기 때문에 절대 적용 안 됨.
-  if (prop === 'content') {
-    report.add('prop', `${prop}: ${value}`,
-      'content 속성은 ::before/::after 의사요소에서만 동작해요. ' +
-      'Roll20 매크로의 inline style 은 실제 <a> 에 붙어서 무시됩니다.');
-    return null;
-  }
+  if (prop === 'content') return false;
+  return !BLOCKED_VALUE_RE.some((re) => re.test(value));
+}
 
-  // 명시적으로 차단되는 것들만 strip + 경고. 그 외는 모두 통과.
-  for (const [key, { re, msg }] of Object.entries(BLOCKED_PATTERNS)) {
-    if (re.test(value)) {
-      report.add(key === 'calc' ? 'value' : 'security', `${prop}: ${value}`, msg);
-      return null;
-    }
+// ============================================================
+// 4. Roll20 쿼리 ?{…}
+// ============================================================
+//
+// Roll20 는 메시지를 보낼 때 ?{…} 를 팝업으로 물어보고, 사용자가 고른
+// "값"으로 치환한 다음 그 결과를 마크다운/CSS 파서에 태운다. 그래서
+//
+//   ?{퍼센트| 100%,[100%](#" style="…background-color: #C9151E&#41;| …}
+//
+// 처럼 선택지의 "값" 쪽에 통째로 스타일 링크를 넣는 매크로가 성립한다.
+// 이때 값 안의 ) , | 는 쿼리 파서에 먹히지 않도록 &#41; &#44; &#124; 로
+// 이스케이프해서 쓰고, 치환 시점에 실제 문자로 복원된다.
+//
+// 예전 구현은 "라벨"을 그대로 본문에 꽂아버려서(→ 그냥 "100%" 텍스트)
+// 선택지형 매크로가 전부 죽어 있었다. 이제 값을 쓰고 엔티티를 풀어준다.
+
+const QUERY_RE = /\?\{([^{}]+)\}/g;
+
+function parseQuery(raw, inner) {
+  const parts = inner.split('|');
+  const prompt = parts[0].trim() || '입력';
+  const rest = parts.slice(1);
+
+  // Roll20 규칙: 선택지가 2개 이상이거나, 하나뿐이어도 "라벨,값" 형태면
+  // 드롭다운. 그 외에는 기본값이 채워진 자유 입력.
+  const isSelect = rest.length > 1 || (rest.length === 1 && rest[0].includes(','));
+  if (!isSelect) {
+    return { key: raw, prompt, type: 'text', def: decodeEntities(rest[0] || '') };
   }
-  return decl;
+  const options = rest.map((part) => {
+    const i = part.indexOf(',');
+    const label = (i === -1 ? part : part.slice(0, i)).trim();
+    const value = i === -1 ? part : part.slice(i + 1);
+    return { label: label || '(이름 없음)', value: decodeEntities(value) };
+  });
+  return { key: raw, prompt, type: 'select', options };
+}
+
+function collectQueries(text) {
+  const out = [];
+  const seen = new Set();
+  QUERY_RE.lastIndex = 0;
+  let m;
+  while ((m = QUERY_RE.exec(text)) !== null) {
+    if (seen.has(m[0])) continue;
+    seen.add(m[0]);
+    out.push(parseQuery(m[0], m[1]));
+  }
+  return out;
+}
+
+function answerFor(q) {
+  const saved = state.answers[q.key];
+  if (q.type === 'text') return typeof saved === 'string' ? saved : q.def;
+  const idx = Number.isInteger(saved) && q.options[saved] ? saved : 0;
+  return q.options[idx] ? q.options[idx].value : '';
+}
+
+function substituteQueries(text) {
+  return text.replace(QUERY_RE, (raw, inner) => answerFor(parseQuery(raw, inner)));
 }
 
 // ============================================================
@@ -195,6 +214,10 @@ const STYLE_LINK_RE =
 const NORMAL_LINK_RE =
   /\[([^\]]*)\]\(((?:https?:\/\/|mailto:|#)[^)\s]*)\)/g;
 
+// 스타일 없는 명령 버튼: [굴림](!&#13;/roll 1d20) / [능력](~char|ability).
+// 명령 안에 공백이 흔해서 NORMAL_LINK_RE 로는 안 잡힌다.
+const COMMAND_LINK_RE = /\[([^\]]*)\]\(([!~][^)]*)\)/g;
+
 // 이미지 URL 자동 인식 (확장자 기반).
 const IMAGE_URL_RE =
   /(https?:\/\/[^\s<>"'()]+\.(?:png|jpe?g|gif|webp|svg|bmp))(\?[^\s<>"'()]*)?/gi;
@@ -203,20 +226,10 @@ const IMAGE_URL_RE =
 // 단일 백틱은 일반 본문에서 흔히 쓰이므로 코드로 잡지 않는다.
 const BACKTICK_RE = /``([^`\n]+?)``/g;
 
-// Roll20 query: ?{prompt}, ?{prompt|default}, ?{prompt|opt1|opt2}.
-const QUERY_RE = /\?\{([^}]+)\}/g;
-
-function substituteQueries(text) {
-  return text.replace(QUERY_RE, (_m, inner) => {
-    const parts = inner.split('|');
-    const prompt = parts[0].trim();
-    if (parts.length === 1) return prompt;
-    // |default 형태에서 default 가 비어있으면 ?{프롬프트|} 인 셈이라
-    // prompt 텍스트로 fallback. 옵션 dropdown(opt,val) 은 첫 옵션의 라벨.
-    const def = parts[1].split(',')[0].trim();
-    return def || prompt;
-  });
-}
+// Roll20 에서 "명령 버튼"이 되는 링크 대상. ! = API 명령, ~ = 매크로/능력,
+// / = 채팅 명령. 이 셋은 Roll20 가 기본 버튼 스타일(inline-block + padding)
+// 을 입혀서 그리기 때문에 우리도 똑같이 취급해야 한다. (#" 트릭은 해당 없음)
+const COMMAND_PREFIX_RE = /^[!~/]/;
 
 function detectCommand(line) {
   for (const c of COMMANDS) {
@@ -234,8 +247,9 @@ function detectCommand(line) {
   return { name: 'say', rest: line };
 }
 
-function processInline(line, report) {
-  // 0) ?{질문} 치환 — 가장 먼저 (다른 패턴 안에도 들어있을 수 있음).
+function processInline(line) {
+  // 0) ?{질문} 치환 — 가장 먼저. 치환 결과 자체가 스타일 링크일 수 있으므로
+  //    반드시 아래 링크 파싱보다 앞서야 한다.
   let work = substituteQueries(line);
 
   // 1) Roll20 styled link → placeholder
@@ -246,18 +260,22 @@ function processInline(line, report) {
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 2) 일반 마크다운 링크 → placeholder
+  // 2) 스타일 없는 명령 버튼 → placeholder (Roll20 기본 버튼 모양)
+  work = work.replace(COMMAND_LINK_RE, (_m, text, prefix) => {
+    const i = placeholders.length;
+    placeholders.push({ kind: 'styled', text, prefix, decls: '' });
+    return `${PH_OPEN}${i}${PH_CLOSE}`;
+  });
+
+  // 3) 일반 마크다운 링크 → placeholder
   work = work.replace(NORMAL_LINK_RE, (_, text, url) => {
-    if (/^javascript:/i.test(url)) {
-      report.add('security', `[${text}](${url})`, 'javascript: 링크는 차단됩니다.');
-      return text;
-    }
+    if (/^javascript:/i.test(url)) return text;
     const i = placeholders.length;
     placeholders.push({ kind: 'normal', text, url });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 3) 미처 들어가지 못한 이미지 URL → <img>
+  // 4) 미처 들어가지 못한 이미지 URL → <img>
   work = work.replace(IMAGE_URL_RE, (_m, base, query) => {
     const url = base + (query || '');
     const i = placeholders.length;
@@ -265,20 +283,12 @@ function processInline(line, report) {
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
 
-  // 4) 백틱 인라인 코드(``text``) → placeholder
+  // 5) 백틱 인라인 코드(``text``) → placeholder
   work = work.replace(BACKTICK_RE, (_m, code) => {
     const i = placeholders.length;
     placeholders.push({ kind: 'code', code });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
-
-  // 5) 처리 안 된 [text](...#...) — 매크로 트릭이지만 escape 깨짐
-  const stray = work.match(/\[[^\]]*\]\([^)]*#[^)]*\)/);
-  if (stray) {
-    report.add('escape', stray[0],
-      '매크로 패턴이 끝까지 닫히지 않은 것 같아요. 값 안의 ) ] " ? @ % 등은 ' +
-      '&#41; &#93; &quot; &#63; &#64; &#37; 처럼 escape 해줘야 해요.');
-  }
 
   // 6) HTML escape + 마크다운 처리
   let html = escapeHtml(work);
@@ -292,7 +302,7 @@ function processInline(line, report) {
   html = html.replace(placeholderRe, (_m, idx) => {
     const p = placeholders[+idx];
     switch (p.kind) {
-      case 'styled': return renderStyledLink(p, report);
+      case 'styled': return renderStyledLink(p);
       case 'normal': return renderNormalLink(p);
       case 'image':  return renderImage(p);
       case 'code':   return renderCode(p);
@@ -314,24 +324,26 @@ function applyMarkdown(html) {
   return html;
 }
 
-function renderStyledLink(p, report) {
-  const decoded = decodeEntities(p.decls);
-  const decls = parseDecls(decoded);
-  const survived = [];
-  for (const d of decls) {
-    const ok = validateDecl(d, report);
-    if (ok) survived.push(`${ok.prop}: ${ok.value}`);
-  }
+function renderStyledLink(p) {
+  const decls = parseDecls(decodeEntities(p.decls)).filter(keepDecl);
+  const styleStr = decls.map((d) => `${d.prop}: ${d.value}`).join('; ');
+
   // 링크 텍스트 안에서도 **굵게**, *기울임*, ~~취소~~ 마크다운 처리.
-  const text = decodeEntities(p.text);
-  const escapedText = applyMarkdown(escapeHtml(text));
-  const styleStr = survived.join('; ');
-  const prefix = (p.prefix || '').trim();
+  const escapedText = applyMarkdown(escapeHtml(decodeEntities(p.text)));
+
+  const prefix = decodeEntities(p.prefix || '').trim();
   const isExternal = /^https?:\/\//i.test(prefix);
   const href = isExternal ? prefix : '#';
   const onclick = isExternal ? '' : ' onclick="return false"';
   const target = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-  return `<a class="r20-styled" href="${escapeHtml(href)}"${target}${onclick} style="${escapeHtml(styleStr)}">${escapedText}</a>`;
+
+  // Roll20 는 !명령 / ~매크로 / 채팅명령 링크를 "버튼"으로 그린다.
+  // 그 기본 스타일(inline-block + padding)이 없으면 width/height 가 아예
+  // 안 먹고(<a> 는 기본이 inline), 버튼 옆에 절대위치로 겹쳐 놓는 도형들의
+  // 좌표까지 전부 어긋난다 — 하트 편지봉투 매크로가 깨져 보이던 원인.
+  const cls = COMMAND_PREFIX_RE.test(prefix) ? 'r20-styled r20-button' : 'r20-styled';
+
+  return `<a class="${cls}" href="${escapeHtml(href)}"${target}${onclick} style="${escapeHtml(styleStr)}">${escapedText}</a>`;
 }
 
 function renderNormalLink(p) {
@@ -350,28 +362,23 @@ function renderCode(p) {
 // 6. 메시지 처리
 // ============================================================
 
-function processMessage(line, report) {
-  if (!line.trim()) return null;
-  const cmd = detectCommand(line);
-  const html = processInline(cmd.rest, report);
-  return { type: cmd.name, html, speaker: cmd.speaker || '' };
-}
-
 function processInput(text) {
-  const report = new SanitizeReport();
   const messages = [];
   for (const line of text.split('\n')) {
-    const m = processMessage(line, report);
-    if (m) messages.push(m);
+    if (!line.trim()) continue;
+    const cmd = detectCommand(line);
+    messages.push({
+      type: cmd.name,
+      html: processInline(cmd.rest),
+      speaker: cmd.speaker || '',
+    });
   }
-  return { messages, report };
+  return messages;
 }
 
 // ============================================================
 // 7. 렌더링
 // ============================================================
-
-const state = { messages: [] };
 
 function buildMsgEl({ type, html, speaker }) {
   const el = document.createElement('div');
@@ -404,58 +411,74 @@ function renderChat() {
   win.scrollTop = win.scrollHeight;
 }
 
-function renderWarnings(report) {
-  const body = $('#warnings-body');
-  body.innerHTML = '';
-  const total = report.total();
-  $('#warn-badge').textContent = String(total);
-  $('#warn-badge').dataset.level =
-    total === 0 ? 'ok' : (report.counts.security ? 'danger' : 'warn');
+// 쿼리 패널. 매 입력마다 통째로 다시 그리면 자유 입력칸의 포커스/커서가
+// 날아가므로, 쿼리 목록 자체가 바뀐 경우에만 다시 만든다.
+function syncQueryPanel(queries) {
+  const panel = $('#query-panel');
+  const list = $('#query-list');
+  const sig = queries.map((q) => q.key).join(' ');
+  if (sig === state.queryKeys) return;
+  state.queryKeys = sig;
 
-  if (total === 0) {
-    body.innerHTML = '<p class="empty">전부 통과! Roll20에서도 똑같이 보일 거예요.</p>';
-    return;
-  }
+  list.innerHTML = '';
+  panel.hidden = queries.length === 0;
+  if (!queries.length) return;
 
-  const summary = document.createElement('div');
-  summary.className = 'warn-summary';
-  const order = ['security', 'syntax', 'escape', 'prop', 'value'];
-  const parts = [];
-  for (const k of order) {
-    if (report.counts[k]) parts.push(`<strong>${KIND_LABEL[k]} ${report.counts[k]}</strong>`);
-  }
-  summary.innerHTML = `차단/경고 ${total}건 — ${parts.join(' · ')}`;
-  body.appendChild(summary);
+  queries.forEach((q, n) => {
+    const row = document.createElement('div');
+    row.className = 'query-row';
 
-  const grouped = new Map();
-  for (const e of report.entries) {
-    const k = `${e.kind}::${e.name}::${e.reason}`;
-    if (!grouped.has(k)) grouped.set(k, { ...e, count: 0 });
-    grouped.get(k).count++;
-  }
-  for (const e of grouped.values()) {
-    const item = document.createElement('div');
-    item.className = 'warn-item';
-    item.innerHTML =
-      `<span class="label" data-kind="${e.kind}">${KIND_LABEL[e.kind] || e.kind}</span>` +
-      `<code>${escapeHtml(e.name)}</code>` +
-      (e.count > 1 ? ` <span class="muted small">×${e.count}</span>` : '') +
-      `<span class="reason">${escapeHtml(e.reason)}</span>`;
-    body.appendChild(item);
-  }
+    const label = document.createElement('label');
+    label.className = 'query-label';
+    label.textContent = q.prompt;
+    label.htmlFor = `query-field-${n}`;
+    row.appendChild(label);
+
+    let field;
+    if (q.type === 'select') {
+      field = document.createElement('select');
+      q.options.forEach((opt, i) => {
+        const o = document.createElement('option');
+        o.value = String(i);
+        o.textContent = opt.label;
+        field.appendChild(o);
+      });
+      const saved = state.answers[q.key];
+      field.value = String(Number.isInteger(saved) && q.options[saved] ? saved : 0);
+      field.addEventListener('change', () => {
+        state.answers[q.key] = Number(field.value);
+        refreshPreview();
+      });
+    } else {
+      field = document.createElement('input');
+      field.type = 'text';
+      field.placeholder = q.def || '자유 입력';
+      const saved = state.answers[q.key];
+      field.value = typeof saved === 'string' ? saved : q.def;
+      field.addEventListener('input', () => {
+        state.answers[q.key] = field.value;
+        refreshPreview();
+      });
+    }
+    field.id = `query-field-${n}`;
+    field.className = 'query-field';
+    row.appendChild(field);
+    list.appendChild(row);
+  });
 }
 
 // ============================================================
 // 8. 영속화
 // ============================================================
 
-const STORAGE_KEY = 'roll20-chat-preview-v4';
+const STORAGE_KEY = 'roll20-chat-preview-v5';
 
 function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       input: $('#macro-input').value,
       darkChat: $('#chat-window').classList.contains('dark'),
+      answers: state.answers,
     }));
   } catch (_) { /* 무시 */ }
 }
@@ -465,6 +488,7 @@ function restore() {
     if (!data) return;
     if (data.input) $('#macro-input').value = normalizeQuotes(data.input);
     if (data.darkChat) $('#chat-window').classList.add('dark');
+    if (data.answers && typeof data.answers === 'object') state.answers = data.answers;
   } catch (_) { /* 무시 */ }
 }
 
@@ -472,20 +496,17 @@ function restore() {
 // 9. 부트
 // ============================================================
 
-function update() {
+// 쿼리 답만 바뀐 경우 — 패널은 그대로 두고 미리보기만 다시 그린다.
+function refreshPreview() {
   const txt = $('#macro-input').value;
-  if (!txt.trim()) {
-    state.messages = [];
-    renderChat();
-    renderWarnings(new SanitizeReport());
-    persist();
-    return;
-  }
-  const { messages, report } = processInput(txt);
-  state.messages = messages;
+  state.messages = txt.trim() ? processInput(txt) : [];
   renderChat();
-  renderWarnings(report);
   persist();
+}
+
+function update() {
+  syncQueryPanel(collectQueries($('#macro-input').value));
+  refreshPreview();
 }
 
 async function copyMacro() {
@@ -534,8 +555,11 @@ function setup() {
 
   $('#copy-btn').addEventListener('click', copyMacro);
   $('#clear-input-btn').addEventListener('click', () => {
-    $('#macro-input').value = '';
+    if (!input.value) return;
+    if (!window.confirm('입력한 매크로를 모두 지울까요?')) return;
+    input.value = '';
     update();
+    input.focus();
   });
   $('#chat-bg-toggle').addEventListener('click', () => {
     $('#chat-window').classList.toggle('dark');
