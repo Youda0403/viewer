@@ -219,8 +219,11 @@ const NORMAL_LINK_RE =
 const COMMAND_LINK_RE = /\[([^\]]*)\]\(([!~][^)]*)\)/g;
 
 // 이미지 URL 자동 인식 (확장자 기반).
+// http(s):// 없이 i.imgur.com/xxx.png 처럼 도메인부터 쓴 주소도 받는다.
+// 이 경우 오탐을 막기 위해 "도메인.TLD/경로" 형태(슬래시 필수)일 때만 인정하고,
+// 단어/경로 한가운데서 시작하는 매치는 (?<!…) 로 걸러낸다.
 const IMAGE_URL_RE =
-  /(https?:\/\/[^\s<>"'()]+\.(?:png|jpe?g|gif|webp|svg|bmp))(\?[^\s<>"'()]*)?/gi;
+  /((?:https?:\/\/|(?<![\w.\/@:-])(?=(?:[a-z0-9-]+\.)+[a-z]{2,}\/))[^\s<>"'()]+\.(?:png|jpe?g|gif|webp|svg|bmp))(\?[^\s<>"'()]*)?/gi;
 
 // 백틱 인라인 코드 — Roll20는 더블 백틱(``text``) 만 코드로 처리한다.
 // 단일 백틱은 일반 본문에서 흔히 쓰이므로 코드로 잡지 않는다.
@@ -355,7 +358,8 @@ function processInline(line) {
 
   // 4) 미처 들어가지 못한 이미지 URL → <img>
   work = work.replace(IMAGE_URL_RE, (_m, base, query) => {
-    const url = base + (query || '');
+    const full = base + (query || '');
+    const url = /^https?:\/\//i.test(full) ? full : 'https://' + full;
     const i = placeholders.length;
     placeholders.push({ kind: 'image', url });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
