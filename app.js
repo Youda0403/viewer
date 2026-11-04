@@ -211,8 +211,15 @@ function substituteQueries(text) {
 const STYLE_LINK_RE =
   /\[([^\]]*)\]\(([^)]*?)#?\s*"\s*style\s*=\s*"([^)]*)\)/g;
 
+// 괄호 안 앞뒤 공백은 허용한다 — [이미지](https://…png ) 처럼 끝에 공백이
+// 하나 붙은 매크로가 흔하다.
 const NORMAL_LINK_RE =
-  /\[([^\]]*)\]\(((?:https?:\/\/|mailto:|#)[^)\s]*)\)/g;
+  /\[([^\]]*)\]\(\s*((?:https?:\/\/|mailto:|#)[^)\s]*)\s*\)/g;
+
+// [텍스트](이미지 URL) — Roll20 은 대상이 이미지 파일이면 링크 대신
+// 이미지로 그린다.
+const IMAGE_LINK_TARGET_RE =
+  /^https?:\/\/[^\s?#]+\.(?:png|jpe?g|gif|webp|svg|bmp)(?:[?#]\S*)?$/i;
 
 // 스타일 없는 명령 버튼: [굴림](!&#13;/roll 1d20) / [능력](~char|ability).
 // 명령 안에 공백이 흔해서 NORMAL_LINK_RE 로는 안 잡힌다.
@@ -352,6 +359,10 @@ function processInline(line) {
   work = work.replace(NORMAL_LINK_RE, (_, text, url) => {
     if (/^javascript:/i.test(url)) return text;
     const i = placeholders.length;
+    if (IMAGE_LINK_TARGET_RE.test(url)) {
+      placeholders.push({ kind: 'image', url });
+      return `${PH_OPEN}${i}${PH_CLOSE}`;
+    }
     placeholders.push({ kind: 'normal', text, url });
     return `${PH_OPEN}${i}${PH_CLOSE}`;
   });
